@@ -154,6 +154,8 @@ let requests = [];
 let activeView = "queue";
 let supabaseClient = null;
 let currentUser = null;
+let currentSession = null;
+let cachedAccessToken = "";
 let currentProfile = null;
 let syncTimer = null;
 let isSyncing = false;
@@ -295,8 +297,14 @@ async function initializeDataSource() {
     },
   });
   await finishAuthRedirect();
-  const { data } = await supabaseClient.auth.getSession();
-  currentUser = data.session?.user || null;
+  const sessionResult = await withTimeout(
+    supabaseClient.auth.getSession(),
+    2500,
+    "Supabase session check took too long."
+  );
+  currentSession = sessionResult.data?.session || null;
+  cachedAccessToken = currentSession?.access_token || readStoredAccessToken();
+  currentUser = currentSession?.user || null;
   if (currentUser) {
     await ensurePendingProfile();
   }
@@ -308,6 +316,8 @@ async function initializeDataSource() {
 
 function listenForAuthChanges() {
   supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    currentSession = session || null;
+    cachedAccessToken = session?.access_token || "";
     currentUser = session?.user || null;
     await loadProfile();
     await loadSupabaseRequests();
@@ -430,6 +440,78 @@ async function finishAuthRedirect() {
   }
 
   window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+}
+
+function supabaseProjectRef() {
+  const url = window.GIU_SUPABASE_CONFIG?.url || "";
+  try {
+    return new URL(url).hostname.split(".")[0] || "";
+  } catch {
+    return "";
+  }
+}
+
+function readStoredAccessToken() {
+  const projectRef = supabaseProjectRef();
+  const preferredKeys = projectRef ? [`sb-${projectRef}-auth-token`] : [];
+  const checkedKeys = new Set();
+
+  const readKey = (key) => {
+    checkedKeys.add(key);
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return "";
+      const parsed = JSON.parse(raw);
+      return parsed?.access_token
+        || parsed?.currentSession?.access_token
+        || parsed?.session?.access_token
+        || "";
+    } catch {
+      return "";
+    }
+  };
+
+  for (const key of preferredKeys) {
+    const token = readKey(key);
+    if (token) return token;
+  }
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key || checkedKeys.has(key) || !key.includes("auth-token")) continue;
+    const token = readKey(key);
+    if (token) return token;
+  }
+
+  return "";
+}
+
+async function getAccessToken(message = "No active Supabase session was found. Please sign in again.") {
+  const storedToken = currentSession?.access_token || cachedAccessToken || readStoredAccessToken();
+  if (storedToken) {
+    cachedAccessToken = storedToken;
+    return { token: storedToken, error: null };
+  }
+
+  const sessionResult = await withTimeout(
+    supabaseClient.auth.getSession(),
+    2500,
+    message
+  );
+  const session = sessionResult.data?.session || null;
+  const token = session?.access_token || "";
+
+  if (token) {
+    currentSession = session;
+    cachedAccessToken = token;
+    currentUser = session.user || currentUser;
+    return { token, error: null };
+  }
+
+  return {
+    token: "",
+    error: sessionResult.error || { message },
+  };
 }
 
 function loadLocalRequests() {
@@ -773,21 +855,14 @@ function fetchUserProfiles() {
 
 async function fetchUserProfilesDirect() {
   const config = window.GIU_SUPABASE_CONFIG;
-  const sessionResult = await withTimeout(
-    supabaseClient.auth.getSession(),
-    2500,
-    "Your Supabase session is not responding. Please sign out, sign in again, and retry Manage Users."
+  const tokenResult = await getAccessToken(
+    "No active Supabase session was found. Please sign in again before opening Manage Users."
   );
-
-  if (sessionResult.error) {
-    return { data: null, error: sessionResult.error };
-  }
-
-  const token = sessionResult.data?.session?.access_token;
+  const token = tokenResult.token;
   if (!config?.url || !config?.anonKey || !token) {
     return {
       data: null,
-      error: { message: "No active Supabase session was found. Please sign in again." },
+      error: tokenResult.error || { message: "No active Supabase session was found. Please sign in again." },
     };
   }
 
@@ -977,19 +1052,14 @@ async function saveUserProfile(userId) {
 
 async function updateUserProfileDirect(userId, updates) {
   const config = window.GIU_SUPABASE_CONFIG;
-  const sessionResult = await withTimeout(
-    supabaseClient.auth.getSession(),
-    3000,
-    "Your Supabase session is not responding. Please sign out, sign in again, and retry this update."
+  const tokenResult = await getAccessToken(
+    "No active Supabase session was found. Please sign in again before updating users."
   );
-
-  if (sessionResult.error) {
-    return { error: sessionResult.error };
-  }
-
-  const token = sessionResult.data?.session?.access_token;
+  const token = tokenResult.token;
   if (!config?.url || !config?.anonKey || !token) {
-    return { error: { message: "No active Supabase session was found. Please sign in again." } };
+    return {
+      error: tokenResult.error || { message: "No active Supabase session was found. Please sign in again." },
+    };
   }
 
   const controller = new AbortController();
@@ -1152,19 +1222,14 @@ async function saveSupabaseRequest(record, isExisting) {
 
 async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
   const config = window.GIU_SUPABASE_CONFIG;
-  const sessionResult = await withTimeout(
-    supabaseClient.auth.getSession(),
-    3000,
-    "Your Supabase session is not responding. Please sign out, sign in again, and retry this save."
+  const tokenResult = await getAccessToken(
+    "No active Supabase session was found. Please sign in again before saving."
   );
-
-  if (sessionResult.error) {
-    return { error: sessionResult.error };
-  }
-
-  const token = sessionResult.data?.session?.access_token;
+  const token = tokenResult.token;
   if (!config?.url || !config?.anonKey || !token) {
-    return { error: { message: "No active Supabase session was found. Please sign in again." } };
+    return {
+      error: tokenResult.error || { message: "No active Supabase session was found. Please sign in again." },
+    };
   }
 
   const controller = new AbortController();
