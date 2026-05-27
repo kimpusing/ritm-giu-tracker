@@ -195,6 +195,7 @@ const els = {
   programName: document.querySelector("#programName"),
   projectName: document.querySelector("#projectName"),
   stageName: document.querySelector("#stageName"),
+  stagePreview: document.querySelector("#stagePreview"),
   statusName: document.querySelector("#statusName"),
   priorityName: document.querySelector("#priorityName"),
   assigneeName: document.querySelector("#assigneeName"),
@@ -268,6 +269,7 @@ function bindEvents() {
   els.passwordSignIn.addEventListener("click", passwordSignIn);
   els.closeAuthDialog.addEventListener("click", closeAuthDialog);
   els.cancelAuth.addEventListener("click", closeAuthDialog);
+  els.stageName.addEventListener("input", updateStagePreview);
 }
 
 async function initializeDataSource() {
@@ -325,6 +327,18 @@ function listenForAuthChanges() {
   });
 }
 
+function clearSignedInState() {
+  currentSession = null;
+  cachedAccessToken = "";
+  currentUser = null;
+  currentProfile = null;
+  profileError = "";
+  requests = [];
+  setMode("Sign in required", "Signed out");
+  updateAccessControls();
+  render();
+}
+
 function setupPassiveSync() {
   window.addEventListener("focus", syncFromSupabase);
   document.addEventListener("visibilitychange", () => {
@@ -364,11 +378,7 @@ async function loadProfile() {
     return;
   }
 
-  const { data, error } = await supabaseClient
-    .from("profiles")
-    .select("id, full_name, lab, role")
-    .eq("id", currentUser.id)
-    .maybeSingle();
+  const { data, error } = await fetchCurrentProfileDirect();
 
   if (error) {
     profileError = error.message;
@@ -377,15 +387,11 @@ async function loadProfile() {
     }
   } else if (!data) {
     await ensurePendingProfile();
-    const retry = await supabaseClient
-      .from("profiles")
-      .select("id, full_name, lab, role")
-      .eq("id", currentUser.id)
-      .maybeSingle();
+    const retry = await fetchCurrentProfileDirect();
 
     if (retry.data) {
       currentProfile = retry.data;
-    const label = retry.data.role === "pending" ? "Pending approval" : retry.data.role === "nrl" ? retry.data.lab : `${retry.data.role.toUpperCase()} view`;
+      const label = retry.data.role === "pending" ? "Pending approval" : retry.data.role === "nrl" ? retry.data.lab : `${retry.data.role.toUpperCase()} view`;
       setMode(label, currentUser.email);
     } else {
       currentProfile = null;
@@ -401,16 +407,60 @@ async function loadProfile() {
   updateAccessControls();
 }
 
+async function fetchCurrentProfileDirect() {
+  const config = window.GIU_SUPABASE_CONFIG;
+  const tokenResult = await getAccessToken("No active Supabase session was found. Please sign in again.");
+  const token = tokenResult.token;
+  if (!config?.url || !config?.anonKey || !token || !currentUser?.id) {
+    return {
+      data: null,
+      error: tokenResult.error || { message: "No active Supabase session was found. Please sign in again." },
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const url = `${config.url}/rest/v1/profiles?select=id,full_name,lab,role&id=eq.${encodeURIComponent(currentUser.id)}&limit=1`;
+    const response = await fetch(url, {
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${token}`,
+      },
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        data: null,
+        error: { message: body?.message || `Supabase returned ${response.status} while loading your profile.` },
+      };
+    }
+
+    return { data: Array.isArray(body) ? body[0] || null : null, error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: {
+        message: error.name === "AbortError"
+          ? "Supabase took too long to load your profile. Please retry, or sign out and sign back in if the app was idle."
+          : error.message,
+      },
+    };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 async function loadSupabaseRequests() {
   if (!currentUser || !currentProfile) {
     requests = [];
     return;
   }
 
-  const { data, error } = await supabaseClient
-    .from("giu_requests")
-    .select("*")
-    .order("updated_at", { ascending: false });
+  const { data, error } = await fetchRequestsDirect();
 
   if (error) {
     requests = [];
@@ -419,6 +469,53 @@ async function loadSupabaseRequests() {
   }
 
   requests = data.map(fromSupabaseRow);
+}
+
+async function fetchRequestsDirect() {
+  const config = window.GIU_SUPABASE_CONFIG;
+  const tokenResult = await getAccessToken("No active Supabase session was found. Please sign in again.");
+  const token = tokenResult.token;
+  if (!config?.url || !config?.anonKey || !token) {
+    return {
+      data: null,
+      error: tokenResult.error || { message: "No active Supabase session was found. Please sign in again." },
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 7000);
+
+  try {
+    const url = `${config.url}/rest/v1/giu_requests?select=*&order=updated_at.desc`;
+    const response = await fetch(url, {
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${token}`,
+      },
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        data: null,
+        error: { message: body?.message || `Supabase returned ${response.status} while loading requests.` },
+      };
+    }
+
+    return { data: body || [], error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: {
+        message: error.name === "AbortError"
+          ? "Supabase took too long to load requests. Please retry, or sign out and sign back in if the app was idle."
+          : error.message,
+      },
+    };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 async function finishAuthRedirect() {
@@ -686,6 +783,7 @@ function renderNrlBoard(items) {
 
 function requestRowTemplate(item) {
   const progress = stageProgress(item.stage);
+  const progressClass = stageProgressClass(item.stage);
   const due = dueState(item);
   const labClass = labClassName(item.lab);
   const action = canEditRequests()
@@ -714,7 +812,7 @@ function requestRowTemplate(item) {
       <div class="stage">
         <span class="field-label">GIU stage</span>
         <span class="meta">${escapeHtml(item.stage)}</span>
-        <span class="progress-track" aria-label="${progress}% complete">
+        <span class="progress-track ${progressClass}" aria-label="${progress}% complete">
           <span class="progress-bar" style="width: ${progress}%"></span>
         </span>
       </div>
@@ -733,13 +831,14 @@ function miniRequestTemplate(item) {
   const due = dueState(item);
   const labClass = labClassName(item.lab);
   const progress = stageProgress(item.stage);
+  const progressClass = stageProgressClass(item.stage);
   return `
     <div class="mini-request ${due.rowClass} ${labClass}">
       <strong>${escapeHtml(item.project)}</strong>
       <span class="pill ${statusClass(item.status)}">${escapeHtml(item.status)}</span>
       <div class="mini-stage">
         <span class="meta">${escapeHtml(item.stage)} - ${escapeHtml(due.label)}</span>
-        <span class="progress-track" aria-label="${progress}% complete">
+        <span class="progress-track ${progressClass}" aria-label="${progress}% complete">
           <span class="progress-bar" style="width: ${progress}%"></span>
         </span>
       </div>
@@ -768,6 +867,7 @@ async function openNewRequest() {
     els.displayId.value = suggestedDisplayId;
     els.receivedDate.valueAsDate = new Date();
     els.targetDate.valueAsDate = addDays(new Date(), 14);
+    updateStagePreview();
     els.dialog.showModal();
   } finally {
     els.newRequest.disabled = false;
@@ -795,7 +895,20 @@ function openExistingRequest(id) {
   els.targetDate.value = item.target;
   els.notesText.value = item.notes || "";
   els.nextStepText.value = item.nextStep || "";
+  updateStagePreview();
   els.dialog.showModal();
+}
+
+function updateStagePreview() {
+  if (!els.stagePreview) return;
+  const progress = stageProgress(els.stageName.value);
+  const progressClass = stageProgressClass(els.stageName.value);
+  els.stagePreview.innerHTML = `
+    <span class="stage-preview-meta">${progress}% complete</span>
+    <span class="progress-track ${progressClass}" aria-label="${progress}% complete">
+      <span class="progress-bar" style="width: ${progress}%"></span>
+    </span>
+  `;
 }
 
 function closeRequestDialog() {
@@ -816,7 +929,7 @@ async function openUserManager() {
     els.userList.innerHTML = `<p class="empty-state compact-state">Loading users...</p>`;
   }
   els.userDialog.showModal();
-  await loadUserManager();
+  loadUserManager();
 }
 
 function closeUserManager() {
@@ -1063,7 +1176,7 @@ async function updateUserProfileDirect(userId, updates) {
   }
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 12000);
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
 
   try {
     const response = await fetch(`${config.url}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
@@ -1118,11 +1231,7 @@ async function removeUserProfile(userId) {
   });
   els.userMessage.textContent = `Removing ${name}...`;
 
-  const { error } = await withTimeout(
-    supabaseClient.from("profiles").delete().eq("id", userId),
-    12000,
-    "Supabase did not respond. Please check your connection and try again."
-  );
+  const { error } = await deleteUserProfileDirect(userId);
 
   if (error) {
     els.userMessage.textContent = error.message;
@@ -1136,6 +1245,53 @@ async function removeUserProfile(userId) {
   els.userMessage.textContent = `${name} was removed from the tracker.`;
   if (!els.userList.querySelector(".user-row")) {
     els.userList.innerHTML = `<p class="empty-state compact-state">No user profiles found.</p>`;
+  }
+}
+
+async function deleteUserProfileDirect(userId) {
+  const config = window.GIU_SUPABASE_CONFIG;
+  const tokenResult = await getAccessToken(
+    "No active Supabase session was found. Please sign in again before removing users."
+  );
+  const token = tokenResult.token;
+  if (!config?.url || !config?.anonKey || !token) {
+    return {
+      error: tokenResult.error || { message: "No active Supabase session was found. Please sign in again." },
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(`${config.url}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${token}`,
+        Prefer: "return=minimal",
+      },
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        error: { message: body?.message || `Supabase returned ${response.status} while removing this user.` },
+      };
+    }
+
+    return { error: null };
+  } catch (error) {
+    return {
+      error: {
+        message: error.name === "AbortError"
+          ? "Supabase took too long to remove this user. Please retry once, or sign out and sign back in if the app was idle."
+          : error.message,
+      },
+    };
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 }
 
@@ -1207,15 +1363,8 @@ async function saveSupabaseRequest(record, isExisting) {
     return false;
   }
 
-  const refreshResult = await withTimeout(
-    loadSupabaseRequests().then(() => ({ error: null })),
-    8000,
-    "The request was saved, but the refreshed queue took too long to load."
-  );
-
-  if (refreshResult.error) {
-    upsertRequestInMemory(record);
-  }
+  upsertRequestInMemory(record);
+  window.setTimeout(syncFromSupabase, 800);
 
   return true;
 }
@@ -1233,7 +1382,7 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
   }
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 12000);
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
   const url = isExisting
     ? `${config.url}/rest/v1/giu_requests?id=eq.${encodeURIComponent(requestId)}`
     : `${config.url}/rest/v1/giu_requests`;
@@ -1299,16 +1448,13 @@ async function deleteRequestById(id) {
   if (!confirmed) return;
 
   if (supabaseClient) {
-    const { error } = await withTimeout(
-      supabaseClient.from("giu_requests").delete().eq("id", id),
-      12000,
-      "Supabase did not respond. Please check your connection and try again."
-    );
+    const { error } = await deleteSupabaseRequestDirect(id);
     if (error) {
       alert(error.message);
       return;
     }
-    await loadSupabaseRequests();
+    requests = requests.filter((request) => request.id !== id);
+    window.setTimeout(syncFromSupabase, 800);
   } else {
     requests = requests.filter((item) => item.id !== id);
     persistLocal();
@@ -1318,6 +1464,53 @@ async function deleteRequestById(id) {
     els.dialog.close();
   }
   render();
+}
+
+async function deleteSupabaseRequestDirect(id) {
+  const config = window.GIU_SUPABASE_CONFIG;
+  const tokenResult = await getAccessToken(
+    "No active Supabase session was found. Please sign in again before deleting."
+  );
+  const token = tokenResult.token;
+  if (!config?.url || !config?.anonKey || !token) {
+    return {
+      error: tokenResult.error || { message: "No active Supabase session was found. Please sign in again." },
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(`${config.url}/rest/v1/giu_requests?id=eq.${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${token}`,
+        Prefer: "return=minimal",
+      },
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        error: { message: body?.message || `Supabase returned ${response.status} while deleting this request.` },
+      };
+    }
+
+    return { error: null };
+  } catch (error) {
+    return {
+      error: {
+        message: error.name === "AbortError"
+          ? "Supabase took too long to delete this request. Please retry once, or sign out and sign back in if the app was idle."
+          : error.message,
+      },
+    };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function resetData() {
@@ -1333,7 +1526,15 @@ async function handleAuthButton() {
   }
 
   if (currentUser) {
-    await supabaseClient.auth.signOut();
+    els.authButton.disabled = true;
+    withTimeout(
+      supabaseClient.auth.signOut(),
+      2500,
+      "Supabase sign out took too long."
+    ).finally(() => {
+      els.authButton.disabled = false;
+    });
+    clearSignedInState();
     return;
   }
 
@@ -1360,7 +1561,13 @@ async function passwordSignIn() {
   }
 
   els.authMessage.textContent = "Signing in...";
-  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  els.passwordSignIn.disabled = true;
+  const { error } = await withTimeout(
+    supabaseClient.auth.signInWithPassword({ email, password }),
+    8000,
+    "Supabase took too long to sign in. Please retry once."
+  );
+  els.passwordSignIn.disabled = false;
 
   if (error) {
     els.authMessage.textContent = error.message;
@@ -1392,14 +1599,20 @@ async function createAccount() {
   }
 
   els.authMessage.textContent = "Creating account...";
-  const { data, error } = await supabaseClient.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
-      data: { full_name: fullName },
-    },
-  });
+  els.createAccount.disabled = true;
+  const { data, error } = await withTimeout(
+    supabaseClient.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+        data: { full_name: fullName },
+      },
+    }),
+    8000,
+    "Supabase took too long to create this account. Please retry once."
+  );
+  els.createAccount.disabled = false;
 
   if (error) {
     els.authMessage.textContent = error.message;
@@ -1415,27 +1628,39 @@ async function createAccount() {
 }
 
 async function ensurePendingProfile() {
-  const { data } = await supabaseClient.auth.getUser();
+  const { data } = await withTimeout(
+    supabaseClient.auth.getUser(),
+    4000,
+    "Supabase took too long to check this user."
+  );
   const user = data?.user;
   if (!user) return;
 
-  const { data: existing } = await supabaseClient
-    .from("profiles")
-    .select("id")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data: existing } = await withTimeout(
+    supabaseClient
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle(),
+    5000,
+    "Supabase took too long to check this profile."
+  );
 
   if (existing) return;
 
   const nameFromForm = els.authName?.value?.trim();
   const nameFromMetadata = user.user_metadata?.full_name || user.user_metadata?.name;
 
-  await supabaseClient.from("profiles").insert({
-    id: user.id,
-    full_name: nameFromForm || nameFromMetadata || user.email,
-    lab: "Pending assignment",
-    role: "pending",
-  });
+  await withTimeout(
+    supabaseClient.from("profiles").insert({
+      id: user.id,
+      full_name: nameFromForm || nameFromMetadata || user.email,
+      lab: "Pending assignment",
+      role: "pending",
+    }),
+    5000,
+    "Supabase took too long to create this profile."
+  );
 }
 
 function fromSupabaseRow(row) {
@@ -1512,21 +1737,72 @@ function nextDisplayId() {
 
 async function reserveNextDisplayId() {
   if (supabaseClient) {
-    const { data, error } = await withTimeout(
-      supabaseClient.rpc("reserve_giu_display_id", { target_year: new Date().getFullYear() }),
-      8000,
-      "Could not reserve a request ID in Supabase."
-    );
-
-    if (!error && data) return data;
+    const reserved = await reserveDisplayIdDirect(new Date().getFullYear());
+    if (reserved.data) return reserved.data;
   }
 
   return nextDisplayId();
 }
 
+async function reserveDisplayIdDirect(year) {
+  const config = window.GIU_SUPABASE_CONFIG;
+  const tokenResult = await getAccessToken(
+    "No active Supabase session was found. Please sign in again before creating a request ID."
+  );
+  const token = tokenResult.token;
+  if (!config?.url || !config?.anonKey || !token) {
+    return { data: "", error: tokenResult.error || { message: "No active Supabase session was found." } };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(`${config.url}/rest/v1/rpc/reserve_giu_display_id`, {
+      method: "POST",
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ target_year: year }),
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        data: "",
+        error: { message: body?.message || `Supabase returned ${response.status} while reserving a request ID.` },
+      };
+    }
+
+    return { data: typeof body === "string" ? body : "", error: null };
+  } catch (error) {
+    return {
+      data: "",
+      error: {
+        message: error.name === "AbortError"
+          ? "Supabase took too long to reserve a request ID."
+          : error.message,
+      },
+    };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 function hasDuplicateDisplayId(displayId, currentId = "") {
   const normalized = displayId.trim().toLowerCase();
   return requests.some((item) => item.id !== currentId && item.displayId.toLowerCase() === normalized);
+}
+
+function stageProgressClass(stage) {
+  const progress = stageProgress(stage);
+  if (progress >= 100) return "progress-complete";
+  if (progress >= 75) return "progress-high";
+  if (progress >= 45) return "progress-mid";
+  return "progress-low";
 }
 
 function statusClass(status) {

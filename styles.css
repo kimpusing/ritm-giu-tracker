@@ -319,6 +319,18 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(10, 122, 117, 0.14);
 }
 
+.stage-preview {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.stage-preview-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
 .full {
   width: 100%;
 }
@@ -531,7 +543,23 @@ textarea:focus {
 .progress-bar {
   height: 100%;
   border-radius: inherit;
-  background: var(--lab-color);
+  transition: width 0.18s ease;
+}
+
+.progress-low .progress-bar {
+  background: #e46f65;
+}
+
+.progress-mid .progress-bar {
+  background: #e7b84d;
+}
+
+.progress-high .progress-bar {
+  background: #6fbf8a;
+}
+
+.progress-complete .progress-bar {
+  background: #2f9b62;
 }
 
 .pill {
