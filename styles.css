@@ -543,21 +543,26 @@ textarea:focus {
 .progress-bar {
   height: 100%;
   border-radius: inherit;
+  background: #e46f65;
   transition: width 0.18s ease;
 }
 
+.progress-track.progress-low > .progress-bar,
 .progress-low .progress-bar {
   background: #e46f65;
 }
 
+.progress-track.progress-mid > .progress-bar,
 .progress-mid .progress-bar {
   background: #e7b84d;
 }
 
+.progress-track.progress-high > .progress-bar,
 .progress-high .progress-bar {
   background: #6fbf8a;
 }
 
+.progress-track.progress-complete > .progress-bar,
 .progress-complete .progress-bar {
   background: #2f9b62;
 }
