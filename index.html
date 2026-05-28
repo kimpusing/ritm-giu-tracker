@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
     <header class="app-header">
       <div class="brand-lockup">
         <div class="brand-logos" aria-label="RITM and Virology Department logos">
@@ -120,6 +122,7 @@
 
       <footer class="app-footer">
         <span>For access concerns, contact the Genomics and Innovation Unit.</span>
+        <span id="sessionInfo">Last viewed: loading...</span>
         <span>Do not include patient-identifying information in status notes.</span>
       </footer>
     </main>
@@ -215,7 +218,10 @@
         </div>
 
         <div class="user-tools">
-          <button class="secondary" id="refreshUsers" type="button">Refresh Users</button>
+          <div class="user-tool-buttons">
+            <button class="secondary" id="refreshUsers" type="button">Refresh Users</button>
+            <button class="secondary" id="approveAllUsers" type="button">Approve All Ready</button>
+          </div>
           <span id="userMessage" class="form-message"></span>
         </div>
 
@@ -236,11 +242,11 @@
         </div>
 
         <p class="auth-copy">
-          Sign in with your approved account, or create an account and wait for GIU approval.
+          Sign in with your registered email and password. Full name is only needed when creating a new account for GIU approval.
         </p>
 
         <label class="wide-label">
-          Full Name
+          Full Name <span class="label-hint">(new accounts only)</span>
           <input id="authName" type="text" placeholder="Juan Dela Cruz" autocomplete="name" />
         </label>
 
@@ -251,7 +257,7 @@
 
         <label class="wide-label">
           Password
-          <input id="authPassword" type="password" placeholder="Temporary password" />
+          <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" />
         </label>
 
         <p class="form-message" id="authMessage"></p>

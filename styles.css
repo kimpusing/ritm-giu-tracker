@@ -763,8 +763,56 @@ textarea:focus {
   font-size: 0.78rem;
 }
 
+.app-footer span {
+  min-width: 0;
+}
+
+#sessionInfo {
+  text-align: center;
+}
+
 .hidden {
   display: none;
+}
+
+.toast-region {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1000;
+  display: grid;
+  gap: 10px;
+  width: min(380px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--accent);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 50px rgba(25, 40, 50, 0.18);
+  padding: 13px 15px;
+  color: var(--ink);
+}
+
+.toast.success {
+  border-left-color: #2f8f5b;
+}
+
+.toast.warning {
+  border-left-color: var(--amber);
+}
+
+.toast strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.toast span {
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 dialog {
@@ -844,6 +892,15 @@ form {
   margin-top: 10px;
 }
 
+.label-hint {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+#userDialog {
+  width: min(1180px, calc(100vw - 28px));
+}
+
 .user-tools {
   display: flex;
   align-items: center;
@@ -852,18 +909,25 @@ form {
   margin-bottom: 12px;
 }
 
+.user-tool-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .user-list {
   display: grid;
   gap: 10px;
-  max-height: min(56vh, 640px);
-  overflow: auto;
+  max-height: min(68vh, 740px);
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
 }
 
 .user-row {
   display: grid;
-  grid-template-columns: minmax(210px, 0.9fr) minmax(180px, 0.75fr) minmax(120px, 0.45fr) minmax(260px, 1fr) auto;
-  gap: 16px;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(180px, 0.7fr) minmax(130px, 0.45fr) minmax(230px, 1fr) minmax(112px, auto);
+  gap: 14px;
   align-items: end;
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
@@ -887,7 +951,7 @@ form {
 }
 
 .user-row-actions {
-  display: flex;
+  display: grid;
   align-items: end;
   gap: 8px;
 }

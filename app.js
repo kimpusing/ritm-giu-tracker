@@ -52,6 +52,8 @@ const staffOptions = [
 ];
 const storageKey = "giu-nrl-status-tracker";
 const userCacheKey = "giu-nrl-user-manager-cache";
+const lastViewedKey = "giu-nrl-last-viewed";
+let previousLastViewed = localStorage.getItem(lastViewedKey) || "";
 
 function displayLabName(lab) {
   return lab === legacyGiuLabName ? giuLabName : lab;
@@ -167,6 +169,7 @@ let syncTimer = null;
 let isSyncing = false;
 let profileError = "";
 let suggestedDisplayId = "";
+let profileNoticeShownForUser = "";
 
 const els = {
   activeCount: document.querySelector("#activeCount"),
@@ -190,6 +193,8 @@ const els = {
   authButton: document.querySelector("#authButton"),
   manageUsers: document.querySelector("#manageUsers"),
   adminNote: document.querySelector("#adminNote"),
+  sessionInfo: document.querySelector("#sessionInfo"),
+  toastRegion: document.querySelector("#toastRegion"),
   dialog: document.querySelector("#requestDialog"),
   form: document.querySelector("#requestForm"),
   dialogTitle: document.querySelector("#dialogTitle"),
@@ -216,6 +221,7 @@ const els = {
   userList: document.querySelector("#userList"),
   userMessage: document.querySelector("#userMessage"),
   refreshUsers: document.querySelector("#refreshUsers"),
+  approveAllUsers: document.querySelector("#approveAllUsers"),
   closeUserDialog: document.querySelector("#closeUserDialog"),
   cancelUsers: document.querySelector("#cancelUsers"),
   authDialog: document.querySelector("#authDialog"),
@@ -233,6 +239,7 @@ const els = {
 initialize();
 
 async function initialize() {
+  localStorage.setItem(lastViewedKey, new Date().toISOString());
   fillSelect(els.stageName, stages);
   fillSelect(els.statusName, statuses);
   fillSelect(els.priorityName, priorities);
@@ -268,6 +275,7 @@ function bindEvents() {
   els.cancelRequest.addEventListener("click", closeRequestDialog);
   els.manageUsers.addEventListener("click", openUserManager);
   els.refreshUsers.addEventListener("click", loadUserManager);
+  els.approveAllUsers.addEventListener("click", approveAllReadyUsers);
   els.closeUserDialog.addEventListener("click", closeUserManager);
   els.cancelUsers.addEventListener("click", closeUserManager);
   els.authButton.addEventListener("click", handleAuthButton);
@@ -323,13 +331,19 @@ async function initializeDataSource() {
 }
 
 function listenForAuthChanges() {
-  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
     currentSession = session || null;
     cachedAccessToken = session?.access_token || "";
     currentUser = session?.user || null;
     await loadProfile();
     await loadSupabaseRequests();
     render();
+    if (event === "SIGNED_IN") {
+      showToast("Signed in", "Your GIU tracker session is active.", "success");
+    }
+    if (event === "SIGNED_OUT") {
+      showToast("Signed out", "Your session has ended.", "success");
+    }
   });
 }
 
@@ -339,6 +353,7 @@ function clearSignedInState() {
   currentUser = null;
   currentProfile = null;
   profileError = "";
+  profileNoticeShownForUser = "";
   requests = [];
   setMode("Sign in required", "Signed out");
   updateAccessControls();
@@ -399,10 +414,26 @@ async function loadProfile() {
       currentProfile = retry.data;
       const label = retry.data.role === "pending" ? "Pending approval" : retry.data.role === "nrl" ? displayLabName(retry.data.lab) : `${retry.data.role.toUpperCase()} view`;
       setMode(label, currentUser.email);
+      if (retry.data.role === "pending" && profileNoticeShownForUser !== currentUser.id) {
+        profileNoticeShownForUser = currentUser.id;
+        showToast(
+          "Account pending approval",
+          "Your tracker profile was created. A GIU admin needs to assign your access.",
+          "warning"
+        );
+      }
     } else {
       currentProfile = null;
       profileError = retry.error?.message || "No profile row was found for this signed-in user.";
       setMode("Profile setup needed", "Ask a GIU admin to check profile access");
+      if (profileNoticeShownForUser !== currentUser.id) {
+        profileNoticeShownForUser = currentUser.id;
+        showToast(
+          "Profile setup needed",
+          "You signed in, but no tracker profile was found yet. Please wait for GIU approval.",
+          "warning"
+        );
+      }
     }
   } else {
     currentProfile = data;
@@ -637,6 +668,40 @@ function setMode(label, title = "") {
   els.syncBadge.title = title;
 }
 
+function updateSessionInfo() {
+  if (!els.sessionInfo) return;
+
+  const viewedText = previousLastViewed
+    ? `Last viewed ${formatDateTime(previousLastViewed)}`
+    : "First view in this browser";
+
+  if (!currentUser) {
+    els.sessionInfo.textContent = viewedText;
+    return;
+  }
+
+  const loginText = currentUser.last_sign_in_at
+    ? `Last login ${formatDateTime(currentUser.last_sign_in_at)}`
+    : "Last login just now";
+  els.sessionInfo.textContent = `${currentUser.email} | ${loginText} | ${viewedText}`;
+}
+
+function showToast(title, message = "", type = "info") {
+  if (!els.toastRegion) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `
+    <strong>${escapeHtml(title)}</strong>
+    ${message ? `<span>${escapeHtml(message)}</span>` : ""}
+  `;
+  els.toastRegion.appendChild(toast);
+
+  window.setTimeout(() => {
+    toast.remove();
+  }, 4600);
+}
+
 function canEditRequests() {
   return !supabaseClient || ["admin", "giu"].includes(currentProfile?.role);
 }
@@ -657,6 +722,7 @@ function updateAccessControls() {
 function render() {
   updateFilterOptions();
   updateAccessControls();
+  updateSessionInfo();
   const filtered = getFilteredRequests();
   renderSummary();
   els.resultCount.textContent = `Showing ${filtered.length} ${filtered.length === 1 ? "request" : "requests"}`;
@@ -1038,6 +1104,54 @@ function renderUserManager(users) {
   });
 }
 
+async function approveAllReadyUsers() {
+  const pendingRows = Array.from(els.userList.querySelectorAll(".user-row.is-pending-user"));
+  const readyRows = pendingRows
+    .map((row) => {
+      const userId = row.dataset.userRow;
+      const name = row.querySelector(`[data-user-name="${cssEscape(userId)}"]`)?.value.trim();
+      const selectedRole = row.querySelector(`[data-user-role="${cssEscape(userId)}"]`)?.value || "pending";
+      const selectedLab = row.querySelector(`[data-user-lab="${cssEscape(userId)}"]`)?.value || "Pending assignment";
+      return {
+        row,
+        userId,
+        updates: {
+          full_name: name,
+          role: selectedRole === "pending" ? "nrl" : selectedRole,
+          lab: selectedLab,
+        },
+      };
+    })
+    .filter(({ updates }) => updates.full_name && updates.lab !== "Pending assignment");
+
+  if (!pendingRows.length) {
+    els.userMessage.textContent = "No pending accounts to approve.";
+    return;
+  }
+
+  if (!readyRows.length) {
+    els.userMessage.textContent = "Choose a name and laboratory for each pending user before approving.";
+    return;
+  }
+
+  els.approveAllUsers.disabled = true;
+  els.userMessage.textContent = `Approving ${readyRows.length} pending account${readyRows.length === 1 ? "" : "s"}...`;
+
+  for (const item of readyRows) {
+    const { error } = await updateUserProfileDirect(item.userId, item.updates);
+    if (error) {
+      els.userMessage.textContent = error.message;
+      els.approveAllUsers.disabled = false;
+      return;
+    }
+  }
+
+  els.userMessage.textContent = `${readyRows.length} pending account${readyRows.length === 1 ? "" : "s"} approved.`;
+  showToast("Users approved", `${readyRows.length} account${readyRows.length === 1 ? "" : "s"} updated.`, "success");
+  await loadUserManager();
+  els.approveAllUsers.disabled = false;
+}
+
 function readUserCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(userCacheKey) || "[]");
@@ -1125,6 +1239,7 @@ async function saveUserProfile(userId) {
   const name = row.querySelector(`[data-user-name="${cssEscape(userId)}"]`).value.trim();
   const role = row.querySelector(`[data-user-role="${cssEscape(userId)}"]`).value;
   const lab = row.querySelector(`[data-user-lab="${cssEscape(userId)}"]`).value;
+  const savedRole = role === "pending" && lab !== "Pending assignment" ? "nrl" : role;
   const button = row.querySelector(`[data-save-user="${cssEscape(userId)}"]`);
 
   if (!name) {
@@ -1138,7 +1253,7 @@ async function saveUserProfile(userId) {
   }
   els.userMessage.textContent = "Saving user...";
 
-  const { error } = await updateUserProfileDirect(userId, { full_name: name, role, lab });
+  const { error } = await updateUserProfileDirect(userId, { full_name: name, role: savedRole, lab });
 
   if (error) {
     els.userMessage.textContent = error.message;
@@ -1152,21 +1267,21 @@ async function saveUserProfile(userId) {
   els.userMessage.textContent = "User updated.";
   const pill = row.querySelector(".pill");
   if (pill) {
-    pill.textContent = roleLabel(role);
-    pill.className = `pill role-pill ${roleClass(role)}`;
+    pill.textContent = roleLabel(savedRole);
+    pill.className = `pill role-pill ${roleClass(savedRole)}`;
   }
   const summary = row.querySelector(".user-summary");
   if (summary) {
-    summary.textContent = role === "pending" ? "Waiting for GIU approval" : lab;
+    summary.textContent = savedRole === "pending" ? "Waiting for GIU approval" : lab;
   }
   const displayName = row.querySelector(`[data-user-display-name="${cssEscape(userId)}"]`);
   if (displayName) {
     displayName.textContent = name;
   }
-  row.classList.toggle("is-pending-user", role === "pending");
+  row.classList.toggle("is-pending-user", savedRole === "pending");
   if (button) {
     button.disabled = false;
-    button.textContent = role === "pending" ? "Approve" : "Update";
+    button.textContent = savedRole === "pending" ? "Approve" : "Update";
   }
 }
 
@@ -1873,6 +1988,17 @@ function formatDate(value) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatDateTime(value) {
+  if (!value) return "N/A";
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function todayString() {
