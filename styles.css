@@ -777,17 +777,32 @@ textarea:focus {
 
 .toast-region {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
+  inset: 0;
   z-index: 1000;
-  display: grid;
-  gap: 10px;
-  width: min(380px, calc(100vw - 36px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  pointer-events: none;
+}
+
+.toast-region:empty {
+  display: none;
+}
+
+body.has-toast::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(15, 32, 42, 0.25);
+  backdrop-filter: blur(3px);
   pointer-events: none;
 }
 
 .toast {
   pointer-events: auto;
+  width: min(430px, calc(100vw - 36px));
   border: 1px solid var(--line);
   border-left: 5px solid var(--accent);
   border-radius: 8px;
@@ -895,6 +910,29 @@ form {
 .label-hint {
   color: var(--muted);
   font-weight: 600;
+}
+
+.auth-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f4f8fa;
+  padding: 4px;
+}
+
+.auth-mode-tabs button {
+  min-height: 42px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.auth-mode-tabs button.active {
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 2px 10px rgba(30, 45, 55, 0.08);
 }
 
 #userDialog {

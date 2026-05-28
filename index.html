@@ -237,15 +237,18 @@
     <dialog id="authDialog">
       <form method="dialog" id="authForm">
         <div class="dialog-header">
-          <h2>GIU Tracker Sign In</h2>
+          <h2 id="authTitle">GIU Tracker Sign In</h2>
           <button class="icon-button" id="closeAuthDialog" type="button" title="Close">x</button>
         </div>
 
-        <p class="auth-copy">
-          Sign in with your registered email and password. Full name is only needed when creating a new account for GIU approval.
-        </p>
+        <div class="auth-mode-tabs" role="tablist" aria-label="Authentication mode">
+          <button class="active" id="authModeSignIn" type="button">Sign In</button>
+          <button id="authModeCreate" type="button">Create Account</button>
+        </div>
 
-        <label class="wide-label">
+        <p class="auth-copy" id="authCopy">Sign in with your registered email and password.</p>
+
+        <label class="wide-label hidden" id="authNameLabel">
           Full Name <span class="label-hint">(new accounts only)</span>
           <input id="authName" type="text" placeholder="Juan Dela Cruz" autocomplete="name" />
         </label>
@@ -263,9 +266,9 @@
         <p class="form-message" id="authMessage"></p>
 
         <div class="dialog-actions compact">
-          <button class="secondary" id="createAccount" value="default" type="button">Create Account</button>
           <button class="secondary" id="cancelAuth" type="button">Cancel</button>
           <button id="passwordSignIn" value="default" type="button">Sign In</button>
+          <button class="hidden" id="createAccount" value="default" type="button">Create Account</button>
         </div>
       </form>
     </dialog>

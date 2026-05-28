@@ -228,6 +228,11 @@ const els = {
   authForm: document.querySelector("#authForm"),
   closeAuthDialog: document.querySelector("#closeAuthDialog"),
   cancelAuth: document.querySelector("#cancelAuth"),
+  authTitle: document.querySelector("#authTitle"),
+  authCopy: document.querySelector("#authCopy"),
+  authModeSignIn: document.querySelector("#authModeSignIn"),
+  authModeCreate: document.querySelector("#authModeCreate"),
+  authNameLabel: document.querySelector("#authNameLabel"),
   authName: document.querySelector("#authName"),
   authEmail: document.querySelector("#authEmail"),
   authPassword: document.querySelector("#authPassword"),
@@ -279,6 +284,8 @@ function bindEvents() {
   els.closeUserDialog.addEventListener("click", closeUserManager);
   els.cancelUsers.addEventListener("click", closeUserManager);
   els.authButton.addEventListener("click", handleAuthButton);
+  els.authModeSignIn.addEventListener("click", () => setAuthMode("sign-in"));
+  els.authModeCreate.addEventListener("click", () => setAuthMode("create"));
   els.createAccount.addEventListener("click", createAccount);
   els.passwordSignIn.addEventListener("click", passwordSignIn);
   els.closeAuthDialog.addEventListener("click", closeAuthDialog);
@@ -331,19 +338,13 @@ async function initializeDataSource() {
 }
 
 function listenForAuthChanges() {
-  supabaseClient.auth.onAuthStateChange(async (event, session) => {
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
     currentSession = session || null;
     cachedAccessToken = session?.access_token || "";
     currentUser = session?.user || null;
     await loadProfile();
     await loadSupabaseRequests();
     render();
-    if (event === "SIGNED_IN") {
-      showToast("Signed in", "Your GIU tracker session is active.", "success");
-    }
-    if (event === "SIGNED_OUT") {
-      showToast("Signed out", "Your session has ended.", "success");
-    }
   });
 }
 
@@ -689,6 +690,7 @@ function updateSessionInfo() {
 function showToast(title, message = "", type = "info") {
   if (!els.toastRegion) return;
 
+  els.toastRegion.innerHTML = "";
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
   toast.innerHTML = `
@@ -696,9 +698,13 @@ function showToast(title, message = "", type = "info") {
     ${message ? `<span>${escapeHtml(message)}</span>` : ""}
   `;
   els.toastRegion.appendChild(toast);
+  document.body.classList.add("has-toast");
 
   window.setTimeout(() => {
     toast.remove();
+    if (!els.toastRegion.children.length) {
+      document.body.classList.remove("has-toast");
+    }
   }, 4600);
 }
 
@@ -1450,7 +1456,11 @@ async function saveRequest() {
     }
 
     if (hasDuplicateDisplayId(record.displayId, id)) {
-      alert(`${record.displayId} is already used by another request. Please use the suggested next request ID or choose a unique ID.`);
+      showToast(
+        "Duplicate request ID",
+        `${record.displayId} is already used. Use the suggested next request ID or choose a unique ID.`,
+        "warning"
+      );
       els.displayId.focus();
       return;
     }
@@ -1481,7 +1491,7 @@ async function saveSupabaseRequest(record, isExisting) {
   const result = await saveSupabaseRequestDirect(payload, record.id, isExisting);
 
   if (result.error) {
-    alert(result.error.message);
+    showToast("Save failed", result.error.message, "warning");
     return false;
   }
 
@@ -1572,7 +1582,7 @@ async function deleteRequestById(id) {
   if (supabaseClient) {
     const { error } = await deleteSupabaseRequestDirect(id);
     if (error) {
-      alert(error.message);
+      showToast("Delete failed", error.message, "warning");
       return;
     }
     requests = requests.filter((request) => request.id !== id);
@@ -1643,19 +1653,27 @@ function resetData() {
 
 async function handleAuthButton() {
   if (!supabaseClient) {
-    alert("Supabase is not configured yet. Add your project URL and anon key in supabase-config.js.");
+    showToast(
+      "Supabase not configured",
+      "Add your project URL and anon key in supabase-config.js.",
+      "warning"
+    );
     return;
   }
 
   if (currentUser) {
     els.authButton.disabled = true;
-    withTimeout(
+    const { error } = await withTimeout(
       supabaseClient.auth.signOut(),
       2500,
       "Supabase sign out took too long."
-    ).finally(() => {
-      els.authButton.disabled = false;
-    });
+    );
+    els.authButton.disabled = false;
+    if (error) {
+      showToast("Sign out issue", error.message, "warning");
+    } else {
+      showToast("Signed out", "Your session has ended.", "success");
+    }
     clearSignedInState();
     return;
   }
@@ -1664,6 +1682,7 @@ async function handleAuthButton() {
   els.authPassword.value = "";
   els.authName.value = "";
   els.authMessage.textContent = "";
+  setAuthMode("sign-in");
   els.authDialog.showModal();
 }
 
@@ -1673,12 +1692,28 @@ function closeAuthDialog() {
   els.authDialog.close();
 }
 
+function setAuthMode(mode) {
+  const isCreate = mode === "create";
+  els.authTitle.textContent = isCreate ? "Create GIU Tracker Account" : "GIU Tracker Sign In";
+  els.authCopy.textContent = isCreate
+    ? "Create an account, then wait for GIU approval before request records are shown."
+    : "Sign in with your registered email and password.";
+  els.authModeSignIn.classList.toggle("active", !isCreate);
+  els.authModeCreate.classList.toggle("active", isCreate);
+  els.authNameLabel.classList.toggle("hidden", !isCreate);
+  els.passwordSignIn.classList.toggle("hidden", isCreate);
+  els.createAccount.classList.toggle("hidden", !isCreate);
+  els.authPassword.autocomplete = isCreate ? "new-password" : "current-password";
+  els.authMessage.textContent = "";
+}
+
 async function passwordSignIn() {
   const email = els.authEmail.value.trim();
   const password = els.authPassword.value;
 
   if (!email || !password) {
     els.authMessage.textContent = "Enter both email and password.";
+    showToast("Sign in incomplete", "Enter both email and password.", "warning");
     return;
   }
 
@@ -1693,11 +1728,13 @@ async function passwordSignIn() {
 
   if (error) {
     els.authMessage.textContent = error.message;
+    showToast("Sign in failed", error.message, "warning");
     return;
   }
 
   await ensurePendingProfile();
   els.authDialog.close();
+  showToast("Signed in", "Your GIU tracker session is active.", "success");
 }
 
 async function createAccount() {
@@ -1707,16 +1744,19 @@ async function createAccount() {
 
   if (!fullName) {
     els.authMessage.textContent = "Enter your full name so the GIU admin can identify your account.";
+    showToast("Name needed", "Enter your full name so GIU can approve the correct account.", "warning");
     return;
   }
 
   if (!email) {
     els.authMessage.textContent = "Enter an email address first.";
+    showToast("Email needed", "Enter an email address first.", "warning");
     return;
   }
 
   if (!password || password.length < 8) {
     els.authMessage.textContent = "Use a password with at least 8 characters.";
+    showToast("Password too short", "Use a password with at least 8 characters.", "warning");
     return;
   }
 
@@ -1738,14 +1778,17 @@ async function createAccount() {
 
   if (error) {
     els.authMessage.textContent = error.message;
+    showToast("Account creation failed", error.message, "warning");
     return;
   }
 
   if (data.session) {
     await ensurePendingProfile();
     els.authDialog.close();
+    showToast("Account created", "Your account is pending GIU approval.", "success");
   } else {
     els.authMessage.textContent = "Account created. Check your email to confirm, then sign in.";
+    showToast("Account created", "Check your email to confirm, then sign in.", "success");
   }
 }
 
