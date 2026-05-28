@@ -11,6 +11,8 @@ const stages = [
 
 const statuses = ["In progress", "Needs input", "On hold", "Delayed", "Completed"];
 const priorities = ["High", "Medium", "Routine"];
+const giuLabName = "Genomics and Innovation Unit";
+const legacyGiuLabName = "Genomics Informatics Unit";
 const laboratories = [
   "National Reference Laboratory for Dengue and Other Arboviruses",
   "National Reference Laboratory for Influenza and Other Respiratory Viruses",
@@ -50,6 +52,10 @@ const staffOptions = [
 ];
 const storageKey = "giu-nrl-status-tracker";
 const userCacheKey = "giu-nrl-user-manager-cache";
+
+function displayLabName(lab) {
+  return lab === legacyGiuLabName ? giuLabName : lab;
+}
 
 const sampleRequests = [
   {
@@ -391,7 +397,7 @@ async function loadProfile() {
 
     if (retry.data) {
       currentProfile = retry.data;
-      const label = retry.data.role === "pending" ? "Pending approval" : retry.data.role === "nrl" ? retry.data.lab : `${retry.data.role.toUpperCase()} view`;
+      const label = retry.data.role === "pending" ? "Pending approval" : retry.data.role === "nrl" ? displayLabName(retry.data.lab) : `${retry.data.role.toUpperCase()} view`;
       setMode(label, currentUser.email);
     } else {
       currentProfile = null;
@@ -400,7 +406,7 @@ async function loadProfile() {
     }
   } else {
     currentProfile = data;
-    const label = data.role === "pending" ? "Pending approval" : data.role === "nrl" ? data.lab : `${data.role.toUpperCase()} view`;
+    const label = data.role === "pending" ? "Pending approval" : data.role === "nrl" ? displayLabName(data.lab) : `${data.role.toUpperCase()} view`;
     setMode(label, currentUser.email);
   }
 
@@ -1048,7 +1054,7 @@ function writeUserCache(users) {
 function userRowTemplate(user) {
   const safeId = escapeHtml(user.id);
   const role = user.role || "pending";
-  const lab = user.lab || "Pending assignment";
+  const lab = displayLabName(user.lab || "Pending assignment");
   const name = user.full_name || "Unnamed user";
   const isPending = role === "pending";
   const summary = isPending ? "Waiting for GIU approval" : lab;
@@ -1105,9 +1111,10 @@ function roleClass(role) {
 }
 
 function labOptions(selected) {
-  const values = ["Pending assignment", "Genomics Informatics Unit", ...laboratories];
+  const normalizedSelected = displayLabName(selected);
+  const values = ["Pending assignment", giuLabName, ...laboratories];
   return values
-    .map((lab) => `<option value="${escapeHtml(lab)}" ${lab === selected ? "selected" : ""}>${escapeHtml(lab)}</option>`)
+    .map((lab) => `<option value="${escapeHtml(lab)}" ${lab === normalizedSelected ? "selected" : ""}>${escapeHtml(lab)}</option>`)
     .join("");
 }
 
