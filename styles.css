@@ -772,7 +772,7 @@ textarea:focus {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .toast-region {
@@ -795,8 +795,8 @@ body.has-toast::before {
   position: fixed;
   inset: 0;
   z-index: 999;
-  background: rgba(15, 32, 42, 0.25);
-  backdrop-filter: blur(3px);
+  background: rgba(15, 32, 42, 0.12);
+  backdrop-filter: blur(1px);
   pointer-events: none;
 }
 
@@ -887,6 +887,43 @@ form {
 
 .dialog-actions.compact {
   grid-template-columns: 1fr auto auto;
+}
+
+#authDialog {
+  width: min(760px, calc(100vw - 28px));
+}
+
+#authDialog form {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+#authDialog .wide-label {
+  margin-top: 11px;
+}
+
+#authDialog input {
+  min-height: 48px;
+}
+
+#authDialog .dialog-actions.compact {
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+#authDialog .dialog-actions.compact button {
+  width: 100%;
+  min-height: 48px;
+}
+
+#passwordSignIn {
+  background: #173f4f;
+  color: #ffffff;
+}
+
+#createAccount {
+  background: #2f6f57;
+  color: #ffffff;
 }
 
 .dialog-subtitle {

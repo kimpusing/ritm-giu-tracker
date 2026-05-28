@@ -193,6 +193,7 @@ const els = {
   authButton: document.querySelector("#authButton"),
   manageUsers: document.querySelector("#manageUsers"),
   adminNote: document.querySelector("#adminNote"),
+  patientInfoReminder: document.querySelector("#patientInfoReminder"),
   sessionInfo: document.querySelector("#sessionInfo"),
   toastRegion: document.querySelector("#toastRegion"),
   dialog: document.querySelector("#requestDialog"),
@@ -705,7 +706,7 @@ function showToast(title, message = "", type = "info") {
     if (!els.toastRegion.children.length) {
       document.body.classList.remove("has-toast");
     }
-  }, 4600);
+  }, 1800);
 }
 
 function canEditRequests() {
@@ -722,6 +723,7 @@ function updateAccessControls() {
   els.resetData.classList.toggle("hidden", Boolean(supabaseClient));
   els.manageUsers.classList.toggle("hidden", currentProfile?.role !== "admin");
   els.adminNote.classList.toggle("hidden", currentProfile?.role !== "admin");
+  els.patientInfoReminder?.classList.toggle("hidden", !canEdit);
   els.authButton.textContent = currentUser ? "Sign out" : "Sign in";
 }
 
