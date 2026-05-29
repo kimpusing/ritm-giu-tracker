@@ -185,6 +185,7 @@ const els = {
   statusFilter: document.querySelector("#statusFilter"),
   priorityFilter: document.querySelector("#priorityFilter"),
   clearFilters: document.querySelector("#clearFilters"),
+  viewToggle: document.querySelector(".view-toggle"),
   queueView: document.querySelector("#queueView"),
   nrlView: document.querySelector("#nrlView"),
   newRequest: document.querySelector("#newRequest"),
@@ -719,6 +720,15 @@ function canDeleteRequests() {
 
 function updateAccessControls() {
   const canEdit = canEditRequests();
+  const showViewToggle = canEdit;
+
+  if (!showViewToggle && activeView !== "queue") {
+    activeView = "queue";
+  }
+
+  els.viewToggle.classList.toggle("hidden", !showViewToggle);
+  els.queueView.classList.toggle("active", activeView === "queue");
+  els.nrlView.classList.toggle("active", activeView === "nrl");
   els.newRequest.classList.toggle("hidden", !canEdit);
   els.resetData.classList.toggle("hidden", Boolean(supabaseClient));
   els.manageUsers.classList.toggle("hidden", currentProfile?.role !== "admin");

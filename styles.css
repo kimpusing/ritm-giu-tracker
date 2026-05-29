@@ -174,7 +174,7 @@ h2 {
   padding: 6px;
   border: 1px solid rgba(190, 210, 216, 0.7);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.68);
   box-shadow: 0 10px 28px rgba(28, 51, 61, 0.07);
 }
 
@@ -200,9 +200,10 @@ h2 {
 }
 
 #authButton.is-signed-in {
-  background: #f8dcdd;
-  color: #8f292f;
-  border: 1px solid #efc2c4;
+  background: #e6edf1;
+  color: var(--ink);
+  border: 1px solid #d5e1e7;
+  box-shadow: none;
 }
 
 #manageUsers {
@@ -222,7 +223,7 @@ h2 {
   min-height: 30px;
   border: 1px solid #cfe0e6;
   border-radius: 999px;
-  background: rgba(244, 250, 249, 0.72);
+  background: rgba(255, 255, 255, 0.72);
   color: var(--deep);
   padding: 0 11px;
   font-size: 0.72rem;
@@ -230,6 +231,13 @@ h2 {
   white-space: nowrap;
   cursor: default;
   user-select: none;
+}
+
+.sync-badge:has(+ #authButton.is-signed-out) {
+  min-height: 38px;
+  padding: 0 16px;
+  font-size: 0.78rem;
+  background: rgba(255, 255, 255, 0.62);
 }
 
 main {
