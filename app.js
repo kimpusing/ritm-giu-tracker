@@ -725,6 +725,8 @@ function updateAccessControls() {
   els.adminNote.classList.toggle("hidden", currentProfile?.role !== "admin");
   els.patientInfoReminder?.classList.toggle("hidden", !canEdit);
   els.authButton.textContent = currentUser ? "Sign out" : "Sign in";
+  els.authButton.classList.toggle("is-signed-in", Boolean(currentUser));
+  els.authButton.classList.toggle("is-signed-out", !currentUser);
 }
 
 function render() {
@@ -846,8 +848,9 @@ function renderNrlBoard(items) {
   els.nrlBoard.innerHTML = Object.entries(grouped)
     .map(([lab, labItems]) => {
       const active = labItems.filter((item) => item.status !== "Completed").length;
+      const labClass = labClassName(lab);
       return `
-        <article class="nrl-column">
+        <article class="nrl-column ${labClass}">
           <div class="nrl-heading">
             <h2>${escapeHtml(lab)}</h2>
             <p class="meta">${active} active of ${labItems.length} total</p>
@@ -859,6 +862,16 @@ function renderNrlBoard(items) {
       `;
     })
     .join("");
+
+  els.nrlBoard.querySelectorAll("[data-edit]").forEach((item) => {
+    item.addEventListener("click", () => openExistingRequest(item.dataset.edit));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openExistingRequest(item.dataset.edit);
+      }
+    });
+  });
 }
 
 function requestRowTemplate(item) {
@@ -912,8 +925,12 @@ function miniRequestTemplate(item) {
   const labClass = labClassName(item.lab);
   const progress = stageProgress(item.stage);
   const progressClass = stageProgressClass(item.stage);
+  const editable = canEditRequests();
   return `
-    <div class="mini-request ${due.rowClass} ${labClass}">
+    <article
+      class="mini-request ${due.rowClass} ${labClass} ${editable ? "is-clickable" : ""}"
+      ${editable ? `data-edit="${item.id}" role="button" tabindex="0" aria-label="Update ${escapeHtml(item.project)}"` : ""}
+    >
       <strong>${escapeHtml(item.project)}</strong>
       <span class="pill ${statusClass(item.status)}">${escapeHtml(item.status)}</span>
       <div class="mini-stage">
@@ -923,7 +940,7 @@ function miniRequestTemplate(item) {
         </span>
       </div>
       <span class="notes">${escapeHtml(item.nextStep || "")}</span>
-    </div>
+    </article>
   `;
 }
 

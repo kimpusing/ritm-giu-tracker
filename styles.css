@@ -171,29 +171,65 @@ h2 {
 .header-actions {
   flex: 0 0 auto;
   flex-wrap: nowrap;
+  padding: 6px;
+  border: 1px solid rgba(190, 210, 216, 0.7);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: 0 10px 28px rgba(28, 51, 61, 0.07);
 }
 
 .header-actions button {
   flex: 0 0 auto;
+  min-height: 38px;
+  border-radius: 8px;
+  padding-inline: 14px;
 }
 
 #newRequest {
   min-width: 132px;
   padding-inline: 18px;
+  background: #17495a;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(23, 73, 90, 0.16);
+}
+
+#authButton.is-signed-out {
+  background: #17495a;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(23, 73, 90, 0.16);
+}
+
+#authButton.is-signed-in {
+  background: #f8dcdd;
+  color: #8f292f;
+  border: 1px solid #efc2c4;
+}
+
+#manageUsers {
+  background: #eaf2f5;
+  color: #173f4f;
+  border: 1px solid #cfe0e6;
+}
+
+#resetData {
+  background: #f2f5f7;
+  color: var(--muted);
 }
 
 .sync-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
-  border: 1px solid #bfd4d4;
+  min-height: 30px;
+  border: 1px solid #cfe0e6;
   border-radius: 999px;
-  background: #f8fcfc;
+  background: rgba(244, 250, 249, 0.72);
   color: var(--deep);
-  padding: 0 12px;
-  font-size: 0.78rem;
+  padding: 0 11px;
+  font-size: 0.72rem;
   font-weight: 650;
   white-space: nowrap;
+  cursor: default;
+  user-select: none;
 }
 
 main {
@@ -321,13 +357,16 @@ textarea:focus {
 
 .stage-preview {
   display: grid;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #dbe6eb;
+  border-radius: 8px;
+  background: #f7fbfb;
 }
 
 .stage-preview-meta {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 650;
 }
 
@@ -694,16 +733,33 @@ textarea:focus {
 }
 
 .nrl-column {
+  --lab-color: var(--accent);
+  --lab-bg: #eef5f5;
+  --lab-ink: var(--deep);
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
   background: #ffffff;
+  box-shadow: 0 8px 22px rgba(28, 51, 61, 0.05);
 }
 
 .nrl-heading {
+  position: relative;
   padding: 13px;
-  background: #f7fafb;
+  background: linear-gradient(90deg, var(--lab-bg), #ffffff 82%);
   border-bottom: 1px solid var(--line);
+}
+
+.nrl-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--lab-color);
+}
+
+.nrl-heading h2 {
+  color: var(--lab-ink);
 }
 
 .nrl-items {
@@ -718,8 +774,27 @@ textarea:focus {
   gap: 8px;
   border-left: 4px solid var(--lab-color);
   padding: 10px 10px 10px 12px;
-  background: #fbfcfd;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--lab-bg) 52%, #ffffff), #fbfcfd 45%);
   border-radius: 6px;
+}
+
+.mini-request.is-clickable {
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease;
+}
+
+.mini-request.is-clickable:hover,
+.mini-request.is-clickable:focus-visible {
+  transform: translateY(-1px);
+  outline: 0;
+  box-shadow: 0 10px 22px rgba(28, 51, 61, 0.1);
+}
+
+.mini-request.is-clickable:focus-visible {
+  border-color: var(--lab-color);
 }
 
 .mini-stage {
@@ -830,6 +905,10 @@ body.has-toast::before {
   font-size: 0.86rem;
 }
 
+#requestDialog {
+  width: min(960px, calc(100vw - 28px));
+}
+
 dialog {
   width: min(900px, calc(100vw - 28px));
   border: 0;
@@ -846,11 +925,21 @@ form {
   padding: 18px;
 }
 
+#requestDialog form {
+  padding: 22px;
+}
+
 .dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+}
+
+#requestDialog .dialog-header {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e4ebef;
 }
 
 .icon-button {
@@ -869,20 +958,56 @@ form {
   gap: 13px;
 }
 
+#requestDialog .form-grid {
+  gap: 16px 18px;
+  align-items: start;
+}
+
+.form-grid-wide {
+  grid-column: 1 / -1;
+}
+
 .form-grid label,
 .wide-label {
   display: grid;
   gap: 7px;
 }
 
+#requestDialog .form-grid label,
+#requestDialog .wide-label {
+  gap: 8px;
+}
+
 .wide-label {
   margin-top: 13px;
+}
+
+#requestDialog .wide-label {
+  margin-top: 16px;
+}
+
+#requestDialog input,
+#requestDialog select {
+  min-height: 44px;
+}
+
+#requestDialog textarea {
+  min-height: 96px;
+  line-height: 1.45;
+  resize: vertical;
 }
 
 .dialog-actions {
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   margin-top: 18px;
+}
+
+#requestDialog .dialog-actions {
+  align-items: center;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid #e4ebef;
 }
 
 .dialog-actions.compact {
