@@ -21,7 +21,6 @@ const laboratories = [
   "National Rotavirus Laboratory",
   "National Reference Laboratory for HIV/AIDS and Other Sexually Transmitted Infections",
 ];
-const requisitionerSections = [giuLabName, ...laboratories, "Other section"];
 const labColorClassMap = new Map([
   [laboratories[0], "lab-dengue"],
   [laboratories[1], "lab-influenza"],
@@ -51,16 +50,6 @@ const staffOptions = [
   "GIU - Iona",
   "GIU - Kim",
 ];
-const assistanceOptions = [
-  "Sequencing analysis",
-  "Sequencing preparation",
-  "Assay optimization",
-  "PCR troubleshooting",
-  "Reagent verification",
-  "Staff orientation",
-  "Training",
-  "Others",
-];
 const storageKey = "giu-nrl-status-tracker";
 const userCacheKey = "giu-nrl-user-manager-cache";
 const lastViewedKey = "giu-nrl-last-viewed";
@@ -86,9 +75,6 @@ const sampleRequests = [
     updated: "2026-05-25",
     notes: "FASTQ files received. QC summary is being reviewed for low-depth samples.",
     nextStep: "Confirm sample exclusions with the NRL before assembly and lineage analysis.",
-    requisitionerName: "Influenza NRL focal person",
-    requisitionerSection: laboratories[1],
-    requiredAssistance: "Sequencing analysis",
   },
   {
     id: crypto.randomUUID(),
@@ -105,9 +91,6 @@ const sampleRequests = [
     updated: "2026-05-24",
     notes: "Reference dataset curated. Tree building is underway with updated metadata labels.",
     nextStep: "Generate annotated tree and send draft interpretation for review.",
-    requisitionerName: "Arbovirus surveillance team",
-    requisitionerSection: laboratories[0],
-    requiredAssistance: "Sequencing analysis",
   },
   {
     id: crypto.randomUUID(),
@@ -124,9 +107,6 @@ const sampleRequests = [
     updated: "2026-05-25",
     notes: "Sample sheet has mismatched collection dates for six records.",
     nextStep: "Await corrected metadata file from the NRL focal person.",
-    requisitionerName: "Dengue NRL focal person",
-    requisitionerSection: laboratories[0],
-    requiredAssistance: "PCR troubleshooting",
   },
   {
     id: crypto.randomUUID(),
@@ -143,9 +123,6 @@ const sampleRequests = [
     updated: "2026-05-22",
     notes: "Draft workflow reviewed. Hold requested while lab finalizes reagent availability.",
     nextStep: "Resume once updated reagent list and planned batch size are available.",
-    requisitionerName: "Enterovirus laboratory staff",
-    requisitionerSection: laboratories[3],
-    requiredAssistance: "Assay optimization",
   },
   {
     id: crypto.randomUUID(),
@@ -162,9 +139,6 @@ const sampleRequests = [
     updated: "2026-05-25",
     notes: "Analysis complete. Report delayed pending final validation comments.",
     nextStep: "Incorporate validator comments and publish final PDF.",
-    requisitionerName: "Exanthems reporting team",
-    requisitionerSection: laboratories[2],
-    requiredAssistance: "Sequencing analysis",
   },
   {
     id: crypto.randomUUID(),
@@ -181,9 +155,6 @@ const sampleRequests = [
     updated: "2026-05-20",
     notes: "Final report transmitted to laboratory focal person.",
     nextStep: "Archive analysis files and include in monthly GIU accomplishment summary.",
-    requisitionerName: "Rotavirus laboratory staff",
-    requisitionerSection: laboratories[4],
-    requiredAssistance: "Reagent verification",
   },
 ];
 
@@ -236,9 +207,6 @@ const els = {
   labName: document.querySelector("#labName"),
   programName: document.querySelector("#programName"),
   projectName: document.querySelector("#projectName"),
-  requisitionerName: document.querySelector("#requisitionerName"),
-  requisitionerSection: document.querySelector("#requisitionerSection"),
-  requiredAssistance: document.querySelector("#requiredAssistance"),
   stageName: document.querySelector("#stageName"),
   stagePreview: document.querySelector("#stagePreview"),
   statusName: document.querySelector("#statusName"),
@@ -285,18 +253,6 @@ async function initialize() {
   fillSelect(els.labName, laboratories);
   fillSelect(els.programName, diseasePrograms);
   fillSelect(els.assigneeName, staffOptions);
-  fillSelect(els.requisitionerSection, requisitionerSections);
-  els.requisitionerSection.insertAdjacentHTML(
-    "afterbegin",
-    '<option value="">Select NRL or section</option>'
-  );
-  els.requisitionerSection.value = "";
-  fillSelect(els.requiredAssistance, assistanceOptions);
-  els.requiredAssistance.insertAdjacentHTML(
-    "afterbegin",
-    '<option value="">Select assistance type</option>'
-  );
-  els.requiredAssistance.value = "";
   bindEvents();
   await initializeDataSource();
   render();
@@ -937,7 +893,6 @@ function requestRowTemplate(item) {
   const progressClass = stageProgressClass(item.stage);
   const due = dueState(item);
   const labClass = labClassName(item.lab);
-  const requester = requesterMetaTemplate(item);
   const action = canEditRequests()
     ? `
       <button class="secondary edit-button" data-edit="${item.id}" type="button">Update</button>
@@ -953,7 +908,6 @@ function requestRowTemplate(item) {
           <span class="lab-name ${labClass}">${escapeHtml(item.lab)}</span>
         </div>
         <strong>${escapeHtml(item.project)}</strong>
-        ${requester}
         <span class="notes">${escapeHtml(item.notes || "")}</span>
         <span class="next-step">Next: ${escapeHtml(item.nextStep || "No next step recorded")}</span>
       </div>
@@ -986,7 +940,6 @@ function miniRequestTemplate(item) {
   const progress = stageProgress(item.stage);
   const progressClass = stageProgressClass(item.stage);
   const editable = canEditRequests();
-  const requester = requesterMetaTemplate(item, "mini");
   return `
     <article
       class="mini-request ${due.rowClass} ${labClass} ${editable ? "is-clickable" : ""}"
@@ -1001,26 +954,8 @@ function miniRequestTemplate(item) {
         </span>
       </div>
       <span class="notes">${escapeHtml(item.nextStep || "")}</span>
-      ${requester}
     </article>
   `;
-}
-
-function requesterMetaTemplate(item, variant = "row") {
-  const name = item.requisitionerName?.trim();
-  const assistance = item.requiredAssistance?.trim();
-  const section = item.requisitionerSection?.trim();
-  if (!name && !assistance && !section) return "";
-
-  const requestedBy = name || section || "Not specified";
-  const details = [
-    `Requested by: ${requestedBy}`,
-    assistance ? `Assistance: ${assistance}` : "",
-  ].filter(Boolean);
-
-  return `<span class="requester-meta ${variant === "mini" ? "compact" : ""}">${details
-    .map(escapeHtml)
-    .join(" | ")}</span>`;
 }
 
 function switchView(view) {
@@ -1063,9 +998,6 @@ function openExistingRequest(id) {
   els.labName.value = item.lab;
   els.programName.value = item.program;
   els.projectName.value = item.project;
-  els.requisitionerName.value = item.requisitionerName || "";
-  setSelectValue(els.requisitionerSection, item.requisitionerSection || "");
-  setSelectValue(els.requiredAssistance, item.requiredAssistance || "");
   els.stageName.value = item.stage;
   els.statusName.value = item.status;
   els.priorityName.value = item.priority;
@@ -1553,9 +1485,6 @@ async function saveRequest() {
       lab: els.labName.value.trim(),
       program: els.programName.value.trim(),
       project: els.projectName.value.trim(),
-      requisitionerName: els.requisitionerName.value.trim(),
-      requisitionerSection: els.requisitionerSection.value.trim(),
-      requiredAssistance: els.requiredAssistance.value.trim(),
       stage: els.stageName.value,
       status: els.statusName.value,
       priority: els.priorityName.value,
@@ -1952,9 +1881,6 @@ function fromSupabaseRow(row) {
     lab: row.lab,
     program: row.program,
     project: row.project,
-    requisitionerName: row.requisitioner_name || "",
-    requisitionerSection: row.requisitioner_section || "",
-    requiredAssistance: row.required_assistance || "",
     stage: row.stage,
     status: row.status,
     priority: row.priority,
@@ -1974,9 +1900,6 @@ function toSupabaseRow(record) {
     lab: record.lab,
     program: record.program,
     project: record.project,
-    requisitioner_name: record.requisitionerName,
-    requisitioner_section: record.requisitionerSection,
-    required_assistance: record.requiredAssistance,
     stage: record.stage,
     status: record.status,
     priority: record.priority,
@@ -2000,18 +1923,6 @@ function uniqueValues(values) {
 
 function hasOption(select, value) {
   return [...select.options].some((option) => option.value === value);
-}
-
-function setSelectValue(select, value) {
-  if (!select) return;
-  const normalized = value || "";
-  if (normalized && !hasOption(select, normalized)) {
-    select.insertAdjacentHTML(
-      "beforeend",
-      `<option value="${escapeHtml(normalized)}">${escapeHtml(normalized)}</option>`
-    );
-  }
-  select.value = normalized;
 }
 
 function matches(filterValue, itemValue) {

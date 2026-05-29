@@ -472,25 +472,6 @@ textarea:focus {
   line-height: 1.25;
 }
 
-.requester-meta {
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  border-radius: 7px;
-  padding: 4px 8px;
-  background: #f4f8f8;
-  color: #496474;
-  font-size: 0.78rem;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.requester-meta.compact {
-  display: block;
-  width: 100%;
-  margin-top: 2px;
-}
-
 .ticket-meta {
   display: flex;
   align-items: center;
@@ -1060,27 +1041,6 @@ form {
 
 .form-grid-wide {
   grid-column: 1 / -1;
-}
-
-.form-section {
-  margin-top: 4px;
-  padding: 12px 14px;
-  border: 1px solid #d9e8e5;
-  border-radius: 8px;
-  background: #f3faf8;
-}
-
-.form-section h3 {
-  margin: 0;
-  color: #244b57;
-  font-size: 0.98rem;
-}
-
-.form-section p {
-  margin: 3px 0 0;
-  color: var(--muted);
-  font-size: 0.86rem;
-  font-weight: 500;
 }
 
 .form-grid label,
