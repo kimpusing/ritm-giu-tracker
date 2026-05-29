@@ -200,10 +200,10 @@ h2 {
 }
 
 #authButton.is-signed-in {
-  background: #f6dddd;
-  color: #7f2f2f;
-  border: 1px solid #e4bebe;
-  box-shadow: 0 8px 18px rgba(127, 47, 47, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  border: 1px solid #cfe0e6;
+  box-shadow: 0 8px 18px rgba(28, 51, 61, 0.08);
 }
 
 #manageUsers {
@@ -741,9 +741,6 @@ textarea:focus {
 }
 
 .nrl-column {
-  --lab-color: var(--accent);
-  --lab-bg: #eef5f5;
-  --lab-ink: var(--deep);
   border: 1px solid color-mix(in srgb, var(--lab-color) 24%, var(--line));
   border-top: 4px solid var(--lab-color);
   border-radius: 8px;
