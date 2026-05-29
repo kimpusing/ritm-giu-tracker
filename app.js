@@ -21,6 +21,7 @@ const laboratories = [
   "National Rotavirus Laboratory",
   "National Reference Laboratory for HIV/AIDS and Other Sexually Transmitted Infections",
 ];
+const requisitionerSections = [giuLabName, ...laboratories, "Other section"];
 const labColorClassMap = new Map([
   [laboratories[0], "lab-dengue"],
   [laboratories[1], "lab-influenza"],
@@ -86,7 +87,7 @@ const sampleRequests = [
     notes: "FASTQ files received. QC summary is being reviewed for low-depth samples.",
     nextStep: "Confirm sample exclusions with the NRL before assembly and lineage analysis.",
     requisitionerName: "Influenza NRL focal person",
-    requisitionerSection: "Influenza NRL",
+    requisitionerSection: laboratories[1],
     requiredAssistance: "Sequencing analysis",
   },
   {
@@ -105,7 +106,7 @@ const sampleRequests = [
     notes: "Reference dataset curated. Tree building is underway with updated metadata labels.",
     nextStep: "Generate annotated tree and send draft interpretation for review.",
     requisitionerName: "Arbovirus surveillance team",
-    requisitionerSection: "Dengue NRL",
+    requisitionerSection: laboratories[0],
     requiredAssistance: "Sequencing analysis",
   },
   {
@@ -124,7 +125,7 @@ const sampleRequests = [
     notes: "Sample sheet has mismatched collection dates for six records.",
     nextStep: "Await corrected metadata file from the NRL focal person.",
     requisitionerName: "Dengue NRL focal person",
-    requisitionerSection: "Dengue NRL",
+    requisitionerSection: laboratories[0],
     requiredAssistance: "PCR troubleshooting",
   },
   {
@@ -143,7 +144,7 @@ const sampleRequests = [
     notes: "Draft workflow reviewed. Hold requested while lab finalizes reagent availability.",
     nextStep: "Resume once updated reagent list and planned batch size are available.",
     requisitionerName: "Enterovirus laboratory staff",
-    requisitionerSection: "Polio NRL",
+    requisitionerSection: laboratories[3],
     requiredAssistance: "Assay optimization",
   },
   {
@@ -162,7 +163,7 @@ const sampleRequests = [
     notes: "Analysis complete. Report delayed pending final validation comments.",
     nextStep: "Incorporate validator comments and publish final PDF.",
     requisitionerName: "Exanthems reporting team",
-    requisitionerSection: "Measles/Rubella NRL",
+    requisitionerSection: laboratories[2],
     requiredAssistance: "Sequencing analysis",
   },
   {
@@ -181,7 +182,7 @@ const sampleRequests = [
     notes: "Final report transmitted to laboratory focal person.",
     nextStep: "Archive analysis files and include in monthly GIU accomplishment summary.",
     requisitionerName: "Rotavirus laboratory staff",
-    requisitionerSection: "National Rotavirus Laboratory",
+    requisitionerSection: laboratories[4],
     requiredAssistance: "Reagent verification",
   },
 ];
@@ -284,6 +285,12 @@ async function initialize() {
   fillSelect(els.labName, laboratories);
   fillSelect(els.programName, diseasePrograms);
   fillSelect(els.assigneeName, staffOptions);
+  fillSelect(els.requisitionerSection, requisitionerSections);
+  els.requisitionerSection.insertAdjacentHTML(
+    "afterbegin",
+    '<option value="">Select NRL or section</option>'
+  );
+  els.requisitionerSection.value = "";
   fillSelect(els.requiredAssistance, assistanceOptions);
   els.requiredAssistance.insertAdjacentHTML(
     "afterbegin",
@@ -1057,8 +1064,8 @@ function openExistingRequest(id) {
   els.programName.value = item.program;
   els.projectName.value = item.project;
   els.requisitionerName.value = item.requisitionerName || "";
-  els.requisitionerSection.value = item.requisitionerSection || "";
-  els.requiredAssistance.value = item.requiredAssistance || "";
+  setSelectValue(els.requisitionerSection, item.requisitionerSection || "");
+  setSelectValue(els.requiredAssistance, item.requiredAssistance || "");
   els.stageName.value = item.stage;
   els.statusName.value = item.status;
   els.priorityName.value = item.priority;
@@ -1993,6 +2000,18 @@ function uniqueValues(values) {
 
 function hasOption(select, value) {
   return [...select.options].some((option) => option.value === value);
+}
+
+function setSelectValue(select, value) {
+  if (!select) return;
+  const normalized = value || "";
+  if (normalized && !hasOption(select, normalized)) {
+    select.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${escapeHtml(normalized)}">${escapeHtml(normalized)}</option>`
+    );
+  }
+  select.value = normalized;
 }
 
 function matches(filterValue, itemValue) {
