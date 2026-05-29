@@ -695,9 +695,13 @@ function showToast(title, message = "", type = "info") {
   els.toastRegion.innerHTML = "";
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
+  const icon = type === "warning" || type === "signed-out" ? "!" : "+";
   toast.innerHTML = `
-    <strong>${escapeHtml(title)}</strong>
-    ${message ? `<span>${escapeHtml(message)}</span>` : ""}
+    <div class="toast-icon" aria-hidden="true">${icon}</div>
+    <div class="toast-text">
+      <strong>${escapeHtml(title)}</strong>
+      ${message ? `<span>${escapeHtml(message)}</span>` : ""}
+    </div>
   `;
   els.toastRegion.appendChild(toast);
   document.body.classList.add("has-toast");
@@ -707,7 +711,7 @@ function showToast(title, message = "", type = "info") {
     if (!els.toastRegion.children.length) {
       document.body.classList.remove("has-toast");
     }
-  }, 1800);
+  }, 1150);
 }
 
 function canEditRequests() {
@@ -1161,11 +1165,13 @@ async function approveAllReadyUsers() {
 
   if (!pendingRows.length) {
     els.userMessage.textContent = "No pending accounts to approve.";
+    showToast("No pending accounts", "There are no users ready for approval.", "warning");
     return;
   }
 
   if (!readyRows.length) {
     els.userMessage.textContent = "Choose a name and laboratory for each pending user before approving.";
+    showToast("Approval paused", "Choose a name and laboratory for each pending user first.", "warning");
     return;
   }
 
@@ -1176,6 +1182,7 @@ async function approveAllReadyUsers() {
     const { error } = await updateUserProfileDirect(item.userId, item.updates);
     if (error) {
       els.userMessage.textContent = error.message;
+      showToast("Approval failed", error.message, "warning");
       els.approveAllUsers.disabled = false;
       return;
     }
@@ -1279,6 +1286,7 @@ async function saveUserProfile(userId) {
 
   if (!name) {
     els.userMessage.textContent = "Enter a name before saving this user.";
+    showToast("Name needed", "Enter a name before saving this user.", "warning");
     return;
   }
 
@@ -1292,6 +1300,7 @@ async function saveUserProfile(userId) {
 
   if (error) {
     els.userMessage.textContent = error.message;
+    showToast("User update failed", error.message, "warning");
     if (button) {
       button.disabled = false;
       button.textContent = role === "pending" ? "Approve" : "Update";
@@ -1300,6 +1309,11 @@ async function saveUserProfile(userId) {
   }
 
   els.userMessage.textContent = "User updated.";
+  showToast(
+    savedRole === "pending" ? "User saved" : "User updated",
+    savedRole === "pending" ? `${name} remains pending.` : `${name} can now access the assigned role.`,
+    "success"
+  );
   const pill = row.querySelector(".pill");
   if (pill) {
     pill.textContent = roleLabel(savedRole);
@@ -1375,6 +1389,7 @@ async function removeUserProfile(userId) {
 
   if (userId === currentUser?.id) {
     els.userMessage.textContent = "You cannot remove your own signed-in admin profile.";
+    showToast("Remove blocked", "You cannot remove your own signed-in admin profile.", "warning");
     return;
   }
 
@@ -1392,6 +1407,7 @@ async function removeUserProfile(userId) {
 
   if (error) {
     els.userMessage.textContent = error.message;
+    showToast("Remove failed", error.message, "warning");
     buttons.forEach((button) => {
       button.disabled = false;
     });
@@ -1400,6 +1416,7 @@ async function removeUserProfile(userId) {
 
   row.remove();
   els.userMessage.textContent = `${name} was removed from the tracker.`;
+  showToast("User removed", `${name} no longer has tracker profile access.`, "success");
   if (!els.userList.querySelector(".user-row")) {
     els.userList.innerHTML = `<p class="empty-state compact-state">No user profiles found.</p>`;
   }
