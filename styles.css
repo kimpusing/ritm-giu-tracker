@@ -744,7 +744,8 @@ textarea:focus {
   --lab-color: var(--accent);
   --lab-bg: #eef5f5;
   --lab-ink: var(--deep);
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--lab-color) 24%, var(--line));
+  border-top: 4px solid var(--lab-color);
   border-radius: 8px;
   overflow: hidden;
   background: #ffffff;
@@ -753,21 +754,27 @@ textarea:focus {
 
 .nrl-heading {
   position: relative;
-  padding: 13px;
-  background: linear-gradient(90deg, var(--lab-bg), #ffffff 82%);
-  border-bottom: 1px solid var(--line);
+  padding: 14px 14px 13px 16px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--lab-bg) 88%, #ffffff), #ffffff 76%),
+    linear-gradient(90deg, color-mix(in srgb, var(--lab-color) 16%, transparent), transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--lab-color) 18%, var(--line));
 }
 
 .nrl-heading::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: 5px;
   background: var(--lab-color);
 }
 
 .nrl-heading h2 {
   color: var(--lab-ink);
+}
+
+.nrl-heading .meta {
+  color: color-mix(in srgb, var(--lab-ink) 70%, var(--muted));
 }
 
 .nrl-items {
