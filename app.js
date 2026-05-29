@@ -1701,7 +1701,7 @@ async function handleAuthButton() {
     if (error) {
       showToast("Sign out issue", error.message, "warning");
     } else {
-      showToast("Signed out", "Your session has ended.", "success");
+      showToast("Signed out", "Your session has ended.", "signed-out");
     }
     clearSignedInState();
     return;
@@ -1763,7 +1763,7 @@ async function passwordSignIn() {
 
   await ensurePendingProfile();
   els.authDialog.close();
-  showToast("Signed in", "Your GIU tracker session is active.", "success");
+  showToast("Signed in", "Your GIU tracker session is active.", "signed-in");
 }
 
 async function createAccount() {
