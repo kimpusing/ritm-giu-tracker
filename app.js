@@ -21,6 +21,7 @@ const laboratories = [
   "National Rotavirus Laboratory",
   "National Reference Laboratory for HIV/AIDS and Other Sexually Transmitted Infections",
 ];
+const requisitionerSections = [giuLabName, ...laboratories, "Other section"];
 const labColorClassMap = new Map([
   [laboratories[0], "lab-dengue"],
   [laboratories[1], "lab-influenza"],
@@ -50,7 +51,18 @@ const staffOptions = [
   "GIU - Iona",
   "GIU - Kim",
 ];
+const assistanceOptions = [
+  "Sequencing analysis",
+  "Sequencing preparation",
+  "Assay optimization",
+  "PCR troubleshooting",
+  "Reagent verification",
+  "Staff orientation",
+  "Training",
+  "Others",
+];
 const storageKey = "giu-nrl-status-tracker";
+const requesterCacheKey = "giu-requester-details-cache";
 const userCacheKey = "giu-nrl-user-manager-cache";
 const lastViewedKey = "giu-nrl-last-viewed";
 let previousLastViewed = localStorage.getItem(lastViewedKey) || "";
@@ -75,6 +87,9 @@ const sampleRequests = [
     updated: "2026-05-25",
     notes: "FASTQ files received. QC summary is being reviewed for low-depth samples.",
     nextStep: "Confirm sample exclusions with the NRL before assembly and lineage analysis.",
+    requisitionerName: "Influenza NRL focal person",
+    requisitionerSection: laboratories[1],
+    requiredAssistance: "Sequencing analysis",
   },
   {
     id: crypto.randomUUID(),
@@ -91,6 +106,9 @@ const sampleRequests = [
     updated: "2026-05-24",
     notes: "Reference dataset curated. Tree building is underway with updated metadata labels.",
     nextStep: "Generate annotated tree and send draft interpretation for review.",
+    requisitionerName: "Arbovirus surveillance team",
+    requisitionerSection: laboratories[0],
+    requiredAssistance: "Sequencing analysis",
   },
   {
     id: crypto.randomUUID(),
@@ -107,6 +125,9 @@ const sampleRequests = [
     updated: "2026-05-25",
     notes: "Sample sheet has mismatched collection dates for six records.",
     nextStep: "Await corrected metadata file from the NRL focal person.",
+    requisitionerName: "Dengue NRL focal person",
+    requisitionerSection: laboratories[0],
+    requiredAssistance: "PCR troubleshooting",
   },
   {
     id: crypto.randomUUID(),
@@ -123,6 +144,9 @@ const sampleRequests = [
     updated: "2026-05-22",
     notes: "Draft workflow reviewed. Hold requested while lab finalizes reagent availability.",
     nextStep: "Resume once updated reagent list and planned batch size are available.",
+    requisitionerName: "Enterovirus laboratory staff",
+    requisitionerSection: laboratories[3],
+    requiredAssistance: "Assay optimization",
   },
   {
     id: crypto.randomUUID(),
@@ -139,6 +163,9 @@ const sampleRequests = [
     updated: "2026-05-25",
     notes: "Analysis complete. Report delayed pending final validation comments.",
     nextStep: "Incorporate validator comments and publish final PDF.",
+    requisitionerName: "Exanthems reporting team",
+    requisitionerSection: laboratories[2],
+    requiredAssistance: "Sequencing analysis",
   },
   {
     id: crypto.randomUUID(),
@@ -155,6 +182,9 @@ const sampleRequests = [
     updated: "2026-05-20",
     notes: "Final report transmitted to laboratory focal person.",
     nextStep: "Archive analysis files and include in monthly GIU accomplishment summary.",
+    requisitionerName: "Rotavirus laboratory staff",
+    requisitionerSection: laboratories[4],
+    requiredAssistance: "Reagent verification",
   },
 ];
 
@@ -179,6 +209,12 @@ const els = {
   resultCount: document.querySelector("#resultCount"),
   queueList: document.querySelector("#queueList"),
   nrlBoard: document.querySelector("#nrlBoard"),
+  detailDialog: document.querySelector("#requestDetailDialog"),
+  detailTitle: document.querySelector("#detailTitle"),
+  detailBody: document.querySelector("#detailBody"),
+  detailEdit: document.querySelector("#detailEdit"),
+  closeDetailDialog: document.querySelector("#closeDetailDialog"),
+  closeDetailSummary: document.querySelector("#closeDetailSummary"),
   searchInput: document.querySelector("#searchInput"),
   labFilter: document.querySelector("#labFilter"),
   stageFilter: document.querySelector("#stageFilter"),
@@ -207,6 +243,9 @@ const els = {
   labName: document.querySelector("#labName"),
   programName: document.querySelector("#programName"),
   projectName: document.querySelector("#projectName"),
+  requisitionerName: document.querySelector("#requisitionerName"),
+  requisitionerSection: document.querySelector("#requisitionerSection"),
+  requiredAssistance: document.querySelector("#requiredAssistance"),
   stageName: document.querySelector("#stageName"),
   stagePreview: document.querySelector("#stagePreview"),
   statusName: document.querySelector("#statusName"),
@@ -216,6 +255,7 @@ const els = {
   targetDate: document.querySelector("#targetDate"),
   notesText: document.querySelector("#notesText"),
   nextStepText: document.querySelector("#nextStepText"),
+  requestSaveMessage: document.querySelector("#requestSaveMessage"),
   deleteRequest: document.querySelector("#deleteRequest"),
   saveRequest: document.querySelector("#saveRequest"),
   userDialog: document.querySelector("#userDialog"),
@@ -253,6 +293,18 @@ async function initialize() {
   fillSelect(els.labName, laboratories);
   fillSelect(els.programName, diseasePrograms);
   fillSelect(els.assigneeName, staffOptions);
+  fillSelect(els.requisitionerSection, requisitionerSections);
+  els.requisitionerSection.insertAdjacentHTML(
+    "afterbegin",
+    '<option value="">Select NRL or section</option>'
+  );
+  els.requisitionerSection.value = "";
+  fillSelect(els.requiredAssistance, assistanceOptions);
+  els.requiredAssistance.insertAdjacentHTML(
+    "afterbegin",
+    '<option value="">Select assistance type</option>'
+  );
+  els.requiredAssistance.value = "";
   bindEvents();
   await initializeDataSource();
   render();
@@ -280,6 +332,13 @@ function bindEvents() {
   els.deleteRequest.addEventListener("click", deleteRequest);
   els.closeRequestDialog.addEventListener("click", closeRequestDialog);
   els.cancelRequest.addEventListener("click", closeRequestDialog);
+  els.closeDetailDialog.addEventListener("click", closeRequestSummary);
+  els.closeDetailSummary.addEventListener("click", closeRequestSummary);
+  els.detailEdit.addEventListener("click", () => {
+    const id = els.detailEdit.dataset.edit;
+    closeRequestSummary();
+    openExistingRequest(id);
+  });
   els.manageUsers.addEventListener("click", openUserManager);
   els.refreshUsers.addEventListener("click", loadUserManager);
   els.approveAllUsers.addEventListener("click", approveAllReadyUsers);
@@ -508,7 +567,7 @@ async function loadSupabaseRequests() {
     return;
   }
 
-  requests = data.map(fromSupabaseRow);
+  requests = data.map(fromSupabaseRow).map(mergeRequesterDetails);
 }
 
 async function fetchRequestsDirect() {
@@ -666,6 +725,42 @@ function persistLocal() {
   localStorage.setItem(storageKey, JSON.stringify(requests));
 }
 
+function readRequesterCache() {
+  try {
+    return JSON.parse(localStorage.getItem(requesterCacheKey) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeRequesterCache(cache) {
+  localStorage.setItem(requesterCacheKey, JSON.stringify(cache));
+}
+
+function cacheRequesterDetails(record) {
+  const cache = readRequesterCache();
+  const existing = cache[record.id] || {};
+  cache[record.id] = {
+    ...existing,
+    requisitionerName: record.requisitionerName || "",
+    requisitionerSection: record.requisitionerSection || "",
+    requiredAssistance: record.requiredAssistance || "",
+  };
+  writeRequesterCache(cache);
+}
+
+function mergeRequesterDetails(record) {
+  const cached = readRequesterCache()[record.id];
+  if (!cached) return record;
+
+  return {
+    ...record,
+    requisitionerName: record.requisitionerName || cached.requisitionerName || "",
+    requisitionerSection: record.requisitionerSection || cached.requisitionerSection || "",
+    requiredAssistance: record.requiredAssistance || cached.requiredAssistance || "",
+  };
+}
+
 function setMode(label, title = "") {
   els.syncBadge.textContent = label;
   els.syncBadge.title = title;
@@ -712,6 +807,13 @@ function showToast(title, message = "", type = "info") {
       document.body.classList.remove("has-toast");
     }
   }, 1150);
+}
+
+function setRequestSaveMessage(message = "", type = "info") {
+  if (!els.requestSaveMessage) return;
+
+  els.requestSaveMessage.textContent = message;
+  els.requestSaveMessage.className = `form-message ${type}`;
 }
 
 function canEditRequests() {
@@ -836,6 +938,18 @@ function renderQueue(items) {
   }
 
   els.queueList.innerHTML = items.map(requestRowTemplate).join("");
+  els.queueList.querySelectorAll("[data-view]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      openRequestSummary(row.dataset.view);
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (event.target.closest("button")) return;
+      event.preventDefault();
+      openRequestSummary(row.dataset.view);
+    });
+  });
   els.queueList.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => openExistingRequest(button.dataset.edit));
   });
@@ -893,6 +1007,7 @@ function requestRowTemplate(item) {
   const progressClass = stageProgressClass(item.stage);
   const due = dueState(item);
   const labClass = labClassName(item.lab);
+  const requester = requesterMetaTemplate(item);
   const action = canEditRequests()
     ? `
       <button class="secondary edit-button" data-edit="${item.id}" type="button">Update</button>
@@ -901,13 +1016,20 @@ function requestRowTemplate(item) {
     : `<span class="view-only">View only</span>`;
 
   return `
-    <article class="request-row ${due.rowClass} ${labClass}">
+    <article
+      class="request-row ${due.rowClass} ${labClass}"
+      data-view="${escapeHtml(item.id)}"
+      role="button"
+      tabindex="0"
+      aria-label="View summary for ${escapeHtml(item.displayId)}"
+    >
       <div class="request-title">
         <div class="ticket-meta">
           <span class="request-id">${escapeHtml(item.displayId)}</span>
           <span class="lab-name ${labClass}">${escapeHtml(item.lab)}</span>
         </div>
         <strong>${escapeHtml(item.project)}</strong>
+        ${requester}
         <span class="notes">${escapeHtml(item.notes || "")}</span>
         <span class="next-step">Next: ${escapeHtml(item.nextStep || "No next step recorded")}</span>
       </div>
@@ -934,12 +1056,93 @@ function requestRowTemplate(item) {
   `;
 }
 
+function openRequestSummary(id) {
+  const item = requests.find((request) => request.id === id);
+  if (!item) return;
+
+  els.detailTitle.textContent = `${item.displayId} Summary`;
+  els.detailBody.innerHTML = requestSummaryTemplate(item);
+  els.detailEdit.dataset.edit = item.id;
+  els.detailEdit.classList.toggle("hidden", !canEditRequests());
+  els.detailDialog.showModal();
+}
+
+function closeRequestSummary() {
+  els.detailDialog.close();
+  els.detailBody.innerHTML = "";
+  els.detailEdit.dataset.edit = "";
+}
+
+function requestSummaryTemplate(item) {
+  const progress = stageProgress(item.stage);
+  const progressClass = stageProgressClass(item.stage);
+  const due = dueState(item);
+  const requestedBy = item.requisitionerName || "Not recorded";
+  const requesterSection = item.requisitionerSection || "Not recorded";
+  const assistance = item.requiredAssistance || "Not recorded";
+
+  return `
+    <section class="detail-hero ${labClassName(item.lab)}">
+      <div>
+        <span class="request-id">${escapeHtml(item.displayId)}</span>
+        <h3>${escapeHtml(item.project)}</h3>
+        <p>${escapeHtml(item.lab)}</p>
+      </div>
+      <span class="pill ${statusClass(item.status)}">${escapeHtml(item.status)}</span>
+    </section>
+
+    <section class="detail-grid" aria-label="Request details">
+      ${detailItemTemplate("Requested by", requestedBy)}
+      ${detailItemTemplate("Requester NRL / Section", requesterSection)}
+      ${detailItemTemplate("Required assistance", assistance)}
+      ${detailItemTemplate("Disease program", item.program)}
+      ${detailItemTemplate("Assigned to", item.assignee)}
+      ${detailItemTemplate("Priority", `${item.priority} priority`)}
+      ${detailItemTemplate("Date received", formatDate(item.received))}
+      ${detailItemTemplate("Target date", formatDate(item.target))}
+      ${detailItemTemplate("Last updated", formatDate(item.updated))}
+    </section>
+
+    <section class="detail-stage">
+      <div>
+        <span class="field-label">GIU Stage</span>
+        <strong>${escapeHtml(item.stage)}</strong>
+        <span class="meta">${progress}% complete - ${escapeHtml(due.label)}</span>
+      </div>
+      <span class="progress-track ${progressClass}" aria-label="${progress}% complete">
+        <span class="progress-bar" style="width: ${progress}%"></span>
+      </span>
+    </section>
+
+    <section class="detail-notes">
+      <div>
+        <span class="field-label">Status summary</span>
+        <p>${escapeHtml(item.notes || "No status notes recorded.")}</p>
+      </div>
+      <div>
+        <span class="field-label">Next step</span>
+        <p>${escapeHtml(item.nextStep || "No next step recorded.")}</p>
+      </div>
+    </section>
+  `;
+}
+
+function detailItemTemplate(label, value) {
+  return `
+    <div class="detail-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "Not recorded")}</strong>
+    </div>
+  `;
+}
+
 function miniRequestTemplate(item) {
   const due = dueState(item);
   const labClass = labClassName(item.lab);
   const progress = stageProgress(item.stage);
   const progressClass = stageProgressClass(item.stage);
   const editable = canEditRequests();
+  const requester = requesterMetaTemplate(item, "mini");
   return `
     <article
       class="mini-request ${due.rowClass} ${labClass} ${editable ? "is-clickable" : ""}"
@@ -954,8 +1157,26 @@ function miniRequestTemplate(item) {
         </span>
       </div>
       <span class="notes">${escapeHtml(item.nextStep || "")}</span>
+      ${requester}
     </article>
   `;
+}
+
+function requesterMetaTemplate(item, variant = "row") {
+  const name = item.requisitionerName?.trim();
+  const assistance = item.requiredAssistance?.trim();
+  const section = item.requisitionerSection?.trim();
+  if (!name && !assistance && !section) return "";
+
+  const requestedBy = name || section || "Not specified";
+  const details = [
+    `Requested by: ${requestedBy}`,
+    assistance ? `Assistance: ${assistance}` : "",
+  ].filter(Boolean);
+
+  return `<span class="requester-meta ${variant === "mini" ? "compact" : ""}">${details
+    .map(escapeHtml)
+    .join(" | ")}</span>`;
 }
 
 function switchView(view) {
@@ -973,6 +1194,7 @@ async function openNewRequest() {
     els.dialogTitle.textContent = "New Request";
     els.deleteRequest.classList.add("hidden");
     els.form.reset();
+    setRequestSaveMessage();
     els.requestId.value = "";
     suggestedDisplayId = nextDisplayId();
     els.displayId.value = suggestedDisplayId;
@@ -991,6 +1213,7 @@ function openExistingRequest(id) {
   if (!item) return;
 
   suggestedDisplayId = "";
+  setRequestSaveMessage();
   els.dialogTitle.textContent = "Update Request";
   els.deleteRequest.classList.toggle("hidden", !canDeleteRequests());
   els.requestId.value = item.id;
@@ -998,6 +1221,9 @@ function openExistingRequest(id) {
   els.labName.value = item.lab;
   els.programName.value = item.program;
   els.projectName.value = item.project;
+  els.requisitionerName.value = item.requisitionerName || "";
+  setSelectValue(els.requisitionerSection, item.requisitionerSection || "");
+  setSelectValue(els.requiredAssistance, item.requiredAssistance || "");
   els.stageName.value = item.stage;
   els.statusName.value = item.status;
   els.priorityName.value = item.priority;
@@ -1024,6 +1250,7 @@ function updateStagePreview() {
 
 function closeRequestDialog() {
   suggestedDisplayId = "";
+  setRequestSaveMessage();
   els.form.reset();
   els.dialog.close();
 }
@@ -1475,6 +1702,7 @@ async function saveRequest() {
   const originalText = els.saveRequest.textContent;
   els.saveRequest.disabled = true;
   els.saveRequest.textContent = "Saving...";
+  setRequestSaveMessage("Saving request...", "info");
 
   try {
     const id = els.requestId.value || crypto.randomUUID();
@@ -1485,6 +1713,9 @@ async function saveRequest() {
       lab: els.labName.value.trim(),
       program: els.programName.value.trim(),
       project: els.projectName.value.trim(),
+      requisitionerName: els.requisitionerName.value.trim(),
+      requisitionerSection: els.requisitionerSection.value.trim(),
+      requiredAssistance: els.requiredAssistance.value.trim(),
       stage: els.stageName.value,
       status: els.statusName.value,
       priority: els.priorityName.value,
@@ -1497,7 +1728,13 @@ async function saveRequest() {
     };
 
     if (supabaseClient && !isExisting && record.displayId === suggestedDisplayId) {
-      record.displayId = await reserveNextDisplayId();
+      const reserved = await reserveNextDisplayId();
+      if (reserved.error) {
+        showToast("Request ID unavailable", reserved.error.message, "warning");
+        setRequestSaveMessage(reserved.error.message, "error");
+        return;
+      }
+      record.displayId = reserved.data;
       els.displayId.value = record.displayId;
     }
 
@@ -1507,6 +1744,7 @@ async function saveRequest() {
         `${record.displayId} is already used. Use the suggested next request ID or choose a unique ID.`,
         "warning"
       );
+      setRequestSaveMessage("Choose a unique request ID before saving.", "error");
       els.displayId.focus();
       return;
     }
@@ -1520,7 +1758,13 @@ async function saveRequest() {
 
     suggestedDisplayId = "";
     els.dialog.close();
+    setRequestSaveMessage();
+    showToast(isExisting ? "Request updated" : "Request created", `${record.displayId} was saved successfully.`, "success");
     render();
+  } catch (error) {
+    const message = error?.message || "Something went wrong while saving this request.";
+    showToast("Save failed", message, "warning");
+    setRequestSaveMessage(message, "error");
   } finally {
     els.saveRequest.disabled = false;
     els.saveRequest.textContent = originalText;
@@ -1538,11 +1782,18 @@ async function saveSupabaseRequest(record, isExisting) {
 
   if (result.error) {
     showToast("Save failed", result.error.message, "warning");
+    setRequestSaveMessage(result.error.message, "error");
     return false;
   }
 
+  cacheRequesterDetails(record);
   upsertRequestInMemory(record);
   window.setTimeout(syncFromSupabase, 800);
+
+  if (result.warning) {
+    showToast("Request saved", result.warning, "warning");
+    setRequestSaveMessage(result.warning, "error");
+  }
 
   return true;
 }
@@ -1564,17 +1815,17 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
   const url = isExisting
     ? `${config.url}/rest/v1/giu_requests?id=eq.${encodeURIComponent(requestId)}`
     : `${config.url}/rest/v1/giu_requests`;
-
-  try {
+  const method = isExisting ? "PATCH" : "POST";
+  const savePayload = async (bodyPayload) => {
     const response = await fetch(url, {
-      method: isExisting ? "PATCH" : "POST",
+      method,
       headers: {
         apikey: config.anonKey,
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         Prefer: "return=minimal",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(bodyPayload),
       signal: controller.signal,
     });
     const body = await response.json().catch(() => null);
@@ -1586,6 +1837,27 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
     }
 
     return { error: null };
+  };
+
+  try {
+    const result = await savePayload(payload);
+    if (!result.error) return result;
+
+    if (isMissingRequesterColumnError(result.error.message)) {
+      const compatiblePayload = withoutRequesterColumns(payload);
+      const retry = await savePayload(compatiblePayload);
+      if (!retry.error) {
+        return {
+          error: null,
+          warning: "Request saved, but requester details were not synced because the Supabase table is missing those columns.",
+        };
+      }
+      return {
+        error: retry.error,
+      };
+    }
+
+    return result;
   } catch (error) {
     return {
       error: {
@@ -1599,6 +1871,25 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
   }
 }
 
+function isMissingRequesterColumnError(message = "") {
+  const normalized = message.toLowerCase();
+  return [
+    "requisitioner_name",
+    "requisitioner_section",
+    "required_assistance",
+  ].some((column) => normalized.includes(column) && normalized.includes("schema cache"));
+}
+
+function withoutRequesterColumns(payload) {
+  const {
+    requisitioner_name: _requisitionerName,
+    requisitioner_section: _requisitionerSection,
+    required_assistance: _requiredAssistance,
+    ...compatiblePayload
+  } = payload;
+  return compatiblePayload;
+}
+
 function upsertRequestInMemory(record) {
   const index = requests.findIndex((item) => item.id === record.id);
   if (index >= 0) {
@@ -1609,6 +1900,7 @@ function upsertRequestInMemory(record) {
 }
 
 function saveLocalRequest(record, id) {
+  cacheRequesterDetails(record);
   upsertRequestInMemory(record);
   persistLocal();
 }
@@ -1693,6 +1985,7 @@ async function deleteSupabaseRequestDirect(id) {
 
 function resetData() {
   requests = sampleRequests.map((item) => ({ ...item, id: crypto.randomUUID() }));
+  requests.forEach(cacheRequesterDetails);
   persistLocal();
   render();
 }
@@ -1881,6 +2174,9 @@ function fromSupabaseRow(row) {
     lab: row.lab,
     program: row.program,
     project: row.project,
+    requisitionerName: row.requisitioner_name || "",
+    requisitionerSection: row.requisitioner_section || "",
+    requiredAssistance: row.required_assistance || "",
     stage: row.stage,
     status: row.status,
     priority: row.priority,
@@ -1900,6 +2196,9 @@ function toSupabaseRow(record) {
     lab: record.lab,
     program: record.program,
     project: record.project,
+    requisitioner_name: record.requisitionerName,
+    requisitioner_section: record.requisitionerSection,
+    required_assistance: record.requiredAssistance,
     stage: record.stage,
     status: record.status,
     priority: record.priority,
@@ -1923,6 +2222,18 @@ function uniqueValues(values) {
 
 function hasOption(select, value) {
   return [...select.options].some((option) => option.value === value);
+}
+
+function setSelectValue(select, value) {
+  if (!select) return;
+  const normalized = value || "";
+  if (normalized && !hasOption(select, normalized)) {
+    select.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${escapeHtml(normalized)}">${escapeHtml(normalized)}</option>`
+    );
+  }
+  select.value = normalized;
 }
 
 function matches(filterValue, itemValue) {
@@ -1949,10 +2260,14 @@ function nextDisplayId() {
 async function reserveNextDisplayId() {
   if (supabaseClient) {
     const reserved = await reserveDisplayIdDirect(new Date().getFullYear());
-    if (reserved.data) return reserved.data;
+    if (reserved.data) return reserved;
+    return {
+      data: "",
+      error: reserved.error || { message: "The tracker could not reserve the next request ID." },
+    };
   }
 
-  return nextDisplayId();
+  return { data: nextDisplayId(), error: null };
 }
 
 async function reserveDisplayIdDirect(year) {

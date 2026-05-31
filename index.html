@@ -127,6 +127,26 @@
       </footer>
     </main>
 
+    <dialog id="requestDetailDialog">
+      <div class="detail-dialog">
+        <div class="dialog-header">
+          <div>
+            <h2 id="detailTitle">Request Summary</h2>
+            <p class="dialog-subtitle">Full request context and latest GIU status.</p>
+          </div>
+          <button class="icon-button" id="closeDetailDialog" type="button" title="Close">x</button>
+        </div>
+
+        <div id="detailBody" class="detail-body"></div>
+
+        <div class="dialog-actions compact">
+          <span></span>
+          <button class="secondary" id="closeDetailSummary" type="button">Close</button>
+          <button id="detailEdit" type="button">Update Request</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="requestDialog">
       <form method="dialog" id="requestForm">
         <div class="dialog-header">
@@ -160,6 +180,22 @@
           <label>
             Project / Request
             <input id="projectName" type="text" placeholder="Sequencing data analysis" required />
+          </label>
+          <div class="form-section form-grid-wide">
+            <h3>Requisitioner Details</h3>
+            <p>Small intake note for who requested the GIU assistance.</p>
+          </div>
+          <label>
+            Requisitioner name
+            <input id="requisitionerName" type="text" placeholder="Name of requester" />
+          </label>
+              <label>
+                Requisitioner NRL / Section
+                <select id="requisitionerSection"></select>
+              </label>
+          <label>
+            Required Assistance
+            <select id="requiredAssistance"></select>
           </label>
           <label>
             GIU Stage
@@ -197,6 +233,8 @@
           Next Step
           <textarea id="nextStepText" rows="3" placeholder="What happens next?"></textarea>
         </label>
+
+        <p id="requestSaveMessage" class="form-message" aria-live="polite"></p>
 
         <div class="dialog-actions">
           <button class="danger secondary" id="deleteRequest" type="button">Delete</button>
