@@ -65,6 +65,7 @@ const storageKey = "giu-nrl-status-tracker";
 const requesterCacheKey = "giu-requester-details-cache";
 const userCacheKey = "giu-nrl-user-manager-cache";
 const lastViewedKey = "giu-nrl-last-viewed";
+const requestPageSize = 4;
 let previousLastViewed = localStorage.getItem(lastViewedKey) || "";
 
 function displayLabName(lab) {
@@ -190,6 +191,7 @@ const sampleRequests = [
 
 let requests = [];
 let activeView = "queue";
+let currentPage = 1;
 let supabaseClient = null;
 let currentUser = null;
 let currentSession = null;
@@ -214,6 +216,7 @@ const els = {
   resultCount: document.querySelector("#resultCount"),
   queueList: document.querySelector("#queueList"),
   nrlBoard: document.querySelector("#nrlBoard"),
+  paginationControls: document.querySelector("#paginationControls"),
   detailDialog: document.querySelector("#requestDetailDialog"),
   detailTitle: document.querySelector("#detailTitle"),
   detailBody: document.querySelector("#detailBody"),
@@ -284,6 +287,9 @@ const els = {
   authEmail: document.querySelector("#authEmail"),
   authPassword: document.querySelector("#authPassword"),
   authMessage: document.querySelector("#authMessage"),
+  forgotPassword: document.querySelector("#forgotPassword"),
+  passwordResetDialog: document.querySelector("#passwordResetDialog"),
+  closePasswordResetDialog: document.querySelector("#closePasswordResetDialog"),
   createAccount: document.querySelector("#createAccount"),
   passwordSignIn: document.querySelector("#passwordSignIn"),
 };
@@ -317,7 +323,10 @@ async function initialize() {
 
 function bindEvents() {
   [els.searchInput, els.labFilter, els.stageFilter, els.statusFilter, els.priorityFilter].forEach((el) => {
-    el.addEventListener("input", render);
+    el.addEventListener("input", () => {
+      resetCurrentPage();
+      render();
+    });
   });
 
   els.clearFilters.addEventListener("click", () => {
@@ -326,11 +335,13 @@ function bindEvents() {
     els.stageFilter.value = "All";
     els.statusFilter.value = "All";
     els.priorityFilter.value = "All";
+    resetCurrentPage();
     render();
   });
 
   els.queueView.addEventListener("click", () => switchView("queue"));
   els.nrlView.addEventListener("click", () => switchView("nrl"));
+  els.paginationControls.addEventListener("click", handlePaginationClick);
   els.newRequest.addEventListener("click", openNewRequest);
   els.resetData.addEventListener("click", resetData);
   els.saveRequest.addEventListener("click", saveRequest);
@@ -352,10 +363,14 @@ function bindEvents() {
   els.authButton.addEventListener("click", handleAuthButton);
   els.landingSignIn.addEventListener("click", () => openAuthDialog("sign-in"));
   els.landingCreateAccount.addEventListener("click", () => openAuthDialog("create"));
+  els.authForm.addEventListener("submit", handleAuthSubmit);
+  els.authForm.addEventListener("keydown", handleAuthEnterKey);
   els.authModeSignIn.addEventListener("click", () => setAuthMode("sign-in"));
   els.authModeCreate.addEventListener("click", () => setAuthMode("create"));
   els.createAccount.addEventListener("click", createAccount);
   els.passwordSignIn.addEventListener("click", passwordSignIn);
+  els.forgotPassword.addEventListener("click", resetPassword);
+  els.closePasswordResetDialog.addEventListener("click", () => els.passwordResetDialog.close());
   els.closeAuthDialog.addEventListener("click", closeAuthDialog);
   els.cancelAuth.addEventListener("click", closeAuthDialog);
   els.stageName.addEventListener("input", updateStagePreview);
@@ -878,6 +893,55 @@ function render() {
   }
 }
 
+function getPagedItems(items) {
+  const totalPages = Math.max(1, Math.ceil(items.length / requestPageSize));
+  currentPage = Math.min(Math.max(currentPage, 1), totalPages);
+  const start = (currentPage - 1) * requestPageSize;
+  return {
+    pageItems: items.slice(start, start + requestPageSize),
+    start,
+    totalPages,
+  };
+}
+
+function renderPagination(items) {
+  if (!items.length || items.length <= requestPageSize) {
+    els.paginationControls.classList.add("hidden");
+    els.paginationControls.innerHTML = "";
+    return;
+  }
+
+  const { start, totalPages } = getPagedItems(items);
+  const end = Math.min(start + requestPageSize, items.length);
+  els.paginationControls.classList.remove("hidden");
+  els.paginationControls.innerHTML = `
+    <span class="pagination-status">Showing ${start + 1}-${end} of ${items.length}</span>
+    <div class="pagination-actions">
+      <button class="secondary page-button" type="button" data-page-action="prev" ${currentPage === 1 ? "disabled" : ""}>Previous</button>
+      <span class="pagination-page">Page ${currentPage} of ${totalPages}</span>
+      <button class="secondary page-button" type="button" data-page-action="next" ${currentPage === totalPages ? "disabled" : ""}>Next</button>
+    </div>
+  `;
+}
+
+function handlePaginationClick(event) {
+  const button = event.target.closest("[data-page-action]");
+  if (!button) return;
+
+  if (button.dataset.pageAction === "prev") {
+    currentPage = Math.max(1, currentPage - 1);
+  } else {
+    currentPage += 1;
+  }
+
+  render();
+  document.querySelector(".content-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function resetCurrentPage() {
+  currentPage = 1;
+}
+
 function updateFilterOptions() {
   const current = {
     lab: els.labFilter.value || "All",
@@ -935,27 +999,33 @@ function renderQueue(items) {
   els.nrlBoard.classList.add("hidden");
 
   if (!currentUser && supabaseClient) {
+    renderPagination([]);
     els.queueList.innerHTML = `<p class="empty-state">Sign in to view GIU request statuses.</p>`;
     return;
   }
 
   if (currentUser && !currentProfile && supabaseClient) {
     const detail = profileError ? ` ${escapeHtml(profileError)}` : "";
+    renderPagination([]);
     els.queueList.innerHTML = `<p class="empty-state"><strong>Your account is signed in, but the profile setup did not finish.</strong><br />Please sign out, sign in again, or ask a GIU admin to press Refresh Users and approve your account.${detail}</p>`;
     return;
   }
 
   if (currentProfile?.role === "pending") {
+    renderPagination([]);
     els.queueList.innerHTML = `<p class="empty-state"><strong>Account created. Pending GIU approval.</strong><br />Your profile is waiting for an admin to assign your role and laboratory access.</p>`;
     return;
   }
 
   if (!items.length) {
+    renderPagination([]);
     els.queueList.innerHTML = `<p class="empty-state">No requests match the current filters.</p>`;
     return;
   }
 
-  els.queueList.innerHTML = items.map(requestRowTemplate).join("");
+  const { pageItems } = getPagedItems(items);
+  renderPagination(items);
+  els.queueList.innerHTML = pageItems.map(requestRowTemplate).join("");
   els.queueList.querySelectorAll("[data-view]").forEach((row) => {
     row.addEventListener("click", (event) => {
       if (event.target.closest("button")) return;
@@ -981,11 +1051,15 @@ function renderNrlBoard(items) {
   els.nrlBoard.classList.remove("hidden");
 
   if (!items.length) {
+    renderPagination([]);
     els.nrlBoard.innerHTML = `<p class="empty-state">No NRL work items match the current filters.</p>`;
     return;
   }
 
-  const grouped = items.reduce((acc, item) => {
+  const { pageItems } = getPagedItems(items);
+  renderPagination(items);
+
+  const grouped = pageItems.reduce((acc, item) => {
     acc[item.lab] ||= [];
     acc[item.lab].push(item);
     return acc;
@@ -1051,7 +1125,7 @@ function requestRowTemplate(item) {
         <span class="notes">${escapeHtml(item.notes || "")}</span>
         <span class="next-step">Next: ${escapeHtml(item.nextStep || "No next step recorded")}</span>
       </div>
-      <div>
+      <div class="request-program">
         <span class="field-label">Program</span>
         <strong>${escapeHtml(item.program)}</strong>
         <p class="meta">${escapeHtml(item.assignee)}</p>
@@ -1063,7 +1137,7 @@ function requestRowTemplate(item) {
           <span class="progress-bar" style="width: ${progress}%"></span>
         </span>
       </div>
-      <div>
+      <div class="request-status-meta">
         <span class="pill ${statusClass(item.status)}">${escapeHtml(item.status)}</span>
         <p class="date-line ${due.className}">${escapeHtml(due.label)}</p>
         <p class="date-line">Updated ${formatDate(item.updated)}</p>
@@ -1199,6 +1273,7 @@ function requesterMetaTemplate(item, variant = "row") {
 
 function switchView(view) {
   activeView = view;
+  resetCurrentPage();
   els.queueView.classList.toggle("active", view === "queue");
   els.nrlView.classList.toggle("active", view === "nrl");
   render();
@@ -1778,6 +1853,7 @@ async function saveRequest() {
     els.dialog.close();
     setRequestSaveMessage();
     showToast(isExisting ? "Request updated" : "Request created", `${record.displayId} was saved successfully.`, "success");
+    if (!isExisting) resetCurrentPage();
     render();
   } catch (error) {
     const message = error?.message || "Something went wrong while saving this request.";
@@ -2063,9 +2139,39 @@ function setAuthMode(mode) {
   els.authModeCreate.classList.toggle("active", isCreate);
   els.authNameLabel.classList.toggle("hidden", !isCreate);
   els.passwordSignIn.classList.toggle("hidden", isCreate);
+  els.forgotPassword.classList.toggle("hidden", isCreate);
   els.createAccount.classList.toggle("hidden", !isCreate);
   els.authPassword.autocomplete = isCreate ? "new-password" : "current-password";
   setAuthMessage();
+}
+
+function isCreateAuthMode() {
+  return !els.createAccount.classList.contains("hidden");
+}
+
+function submitActiveAuthMode() {
+  const isCreate = isCreateAuthMode();
+  const button = isCreate ? els.createAccount : els.passwordSignIn;
+  if (button.disabled) return;
+
+  if (isCreate) {
+    createAccount();
+  } else {
+    passwordSignIn();
+  }
+}
+
+function handleAuthSubmit(event) {
+  event.preventDefault();
+  submitActiveAuthMode();
+}
+
+function handleAuthEnterKey(event) {
+  if (event.key !== "Enter") return;
+  if (!event.target.matches("input")) return;
+
+  event.preventDefault();
+  submitActiveAuthMode();
 }
 
 async function passwordSignIn() {
@@ -2153,6 +2259,39 @@ async function createAccount() {
     setAuthMessage("Account created. Check your email to confirm, then sign in.", "success");
     showToast("Account created", "Check your email to confirm, then sign in.", "success");
   }
+}
+
+async function resetPassword() {
+  const email = els.authEmail.value.trim();
+
+  if (!email) {
+    setAuthMessage("Enter your email address first, then click Forgot password.", "error");
+    showToast("Email needed", "Enter your email address before requesting a password reset.", "warning");
+    els.authEmail.focus();
+    return;
+  }
+
+  setAuthMessage("Sending password reset email...", "info");
+  els.forgotPassword.disabled = true;
+  const { error } = await withTimeout(
+    supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+    }),
+    8000,
+    "Supabase took too long to send the password reset email. Please retry once."
+  );
+  els.forgotPassword.disabled = false;
+
+  if (error) {
+    const message = friendlyAuthError(error.message, "reset");
+    setAuthMessage(message, "error");
+    showToast("Reset email failed", message, "warning");
+    return;
+  }
+
+  setAuthMessage("Password reset email sent. Please check your inbox.", "success");
+  els.passwordResetDialog.showModal();
+  showToast("Reset email sent", "Check your inbox for the password reset link.", "success");
 }
 
 function friendlyAuthError(message = "", mode = "sign-in") {

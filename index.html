@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GIU NRL Status Tracker</title>
+    <link rel="icon" type="image/png" href="assets/ritm-logo-clean.png" />
+    <link rel="apple-touch-icon" href="assets/ritm-logo-clean.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -132,6 +134,7 @@
 
           <div id="queueList" class="request-list" aria-live="polite"></div>
           <div id="nrlBoard" class="nrl-board hidden" aria-live="polite"></div>
+          <div id="paginationControls" class="pagination hidden" aria-label="Request pagination"></div>
         </section>
       </section>
 
@@ -316,6 +319,8 @@
           <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" />
         </label>
 
+        <button class="link-button" id="forgotPassword" type="button">Forgot password?</button>
+
         <p class="form-message auth-alert" id="authMessage" role="alert" aria-live="assertive"></p>
 
         <div class="dialog-actions compact">
@@ -324,6 +329,15 @@
           <button class="hidden" id="createAccount" value="default" type="button">Create Account</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="passwordResetDialog">
+      <div class="reset-confirmation">
+        <div class="reset-confirmation-icon" aria-hidden="true">✓</div>
+        <h2>Password reset email sent</h2>
+        <p>Please check your inbox and follow the link to reset your password.</p>
+        <button id="closePasswordResetDialog" type="button">OK</button>
+      </div>
     </dialog>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
