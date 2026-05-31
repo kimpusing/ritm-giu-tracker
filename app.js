@@ -206,6 +206,11 @@ const els = {
   holdCount: document.querySelector("#holdCount"),
   doneCount: document.querySelector("#doneCount"),
   tatValue: document.querySelector("#tatValue"),
+  signInLanding: document.querySelector("#signInLanding"),
+  landingSignIn: document.querySelector("#landingSignIn"),
+  landingCreateAccount: document.querySelector("#landingCreateAccount"),
+  summaryGrid: document.querySelector("#summaryGrid"),
+  workspace: document.querySelector("#workspace"),
   resultCount: document.querySelector("#resultCount"),
   queueList: document.querySelector("#queueList"),
   nrlBoard: document.querySelector("#nrlBoard"),
@@ -345,6 +350,8 @@ function bindEvents() {
   els.closeUserDialog.addEventListener("click", closeUserManager);
   els.cancelUsers.addEventListener("click", closeUserManager);
   els.authButton.addEventListener("click", handleAuthButton);
+  els.landingSignIn.addEventListener("click", () => openAuthDialog("sign-in"));
+  els.landingCreateAccount.addEventListener("click", () => openAuthDialog("create"));
   els.authModeSignIn.addEventListener("click", () => setAuthMode("sign-in"));
   els.authModeCreate.addEventListener("click", () => setAuthMode("create"));
   els.createAccount.addEventListener("click", createAccount);
@@ -816,6 +823,13 @@ function setRequestSaveMessage(message = "", type = "info") {
   els.requestSaveMessage.className = `form-message ${type}`;
 }
 
+function setAuthMessage(message = "", type = "info") {
+  if (!els.authMessage) return;
+
+  els.authMessage.textContent = message;
+  els.authMessage.className = `form-message auth-alert ${type}`;
+}
+
 function canEditRequests() {
   return !supabaseClient || ["admin", "giu"].includes(currentProfile?.role);
 }
@@ -827,11 +841,15 @@ function canDeleteRequests() {
 function updateAccessControls() {
   const canEdit = canEditRequests();
   const showViewToggle = canEdit;
+  const showSignInLanding = Boolean(supabaseClient && !currentUser);
 
   if (!showViewToggle && activeView !== "queue") {
     activeView = "queue";
   }
 
+  els.signInLanding.classList.toggle("hidden", !showSignInLanding);
+  els.summaryGrid.classList.toggle("hidden", showSignInLanding);
+  els.workspace.classList.toggle("hidden", showSignInLanding);
   els.viewToggle.classList.toggle("hidden", !showViewToggle);
   els.queueView.classList.toggle("active", activeView === "queue");
   els.nrlView.classList.toggle("active", activeView === "nrl");
@@ -2017,17 +2035,21 @@ async function handleAuthButton() {
     return;
   }
 
+  openAuthDialog("sign-in");
+}
+
+function openAuthDialog(mode = "sign-in") {
   els.authEmail.value = "";
   els.authPassword.value = "";
   els.authName.value = "";
-  els.authMessage.textContent = "";
-  setAuthMode("sign-in");
+  setAuthMessage();
+  setAuthMode(mode);
   els.authDialog.showModal();
 }
 
 function closeAuthDialog() {
   els.authForm.reset();
-  els.authMessage.textContent = "";
+  setAuthMessage();
   els.authDialog.close();
 }
 
@@ -2043,7 +2065,7 @@ function setAuthMode(mode) {
   els.passwordSignIn.classList.toggle("hidden", isCreate);
   els.createAccount.classList.toggle("hidden", !isCreate);
   els.authPassword.autocomplete = isCreate ? "new-password" : "current-password";
-  els.authMessage.textContent = "";
+  setAuthMessage();
 }
 
 async function passwordSignIn() {
@@ -2051,12 +2073,12 @@ async function passwordSignIn() {
   const password = els.authPassword.value;
 
   if (!email || !password) {
-    els.authMessage.textContent = "Enter both email and password.";
+    setAuthMessage("Enter both email and password.", "error");
     showToast("Sign in incomplete", "Enter both email and password.", "warning");
     return;
   }
 
-  els.authMessage.textContent = "Signing in...";
+  setAuthMessage("Signing in...", "info");
   els.passwordSignIn.disabled = true;
   const { error } = await withTimeout(
     supabaseClient.auth.signInWithPassword({ email, password }),
@@ -2066,8 +2088,9 @@ async function passwordSignIn() {
   els.passwordSignIn.disabled = false;
 
   if (error) {
-    els.authMessage.textContent = error.message;
-    showToast("Sign in failed", error.message, "warning");
+    const message = friendlyAuthError(error.message, "sign-in");
+    setAuthMessage(message, "error");
+    showToast("Sign in failed", message, "warning");
     return;
   }
 
@@ -2082,24 +2105,24 @@ async function createAccount() {
   const password = els.authPassword.value;
 
   if (!fullName) {
-    els.authMessage.textContent = "Enter your full name so the GIU admin can identify your account.";
+    setAuthMessage("Enter your full name so the GIU admin can identify your account.", "error");
     showToast("Name needed", "Enter your full name so GIU can approve the correct account.", "warning");
     return;
   }
 
   if (!email) {
-    els.authMessage.textContent = "Enter an email address first.";
+    setAuthMessage("Enter an email address first.", "error");
     showToast("Email needed", "Enter an email address first.", "warning");
     return;
   }
 
   if (!password || password.length < 8) {
-    els.authMessage.textContent = "Use a password with at least 8 characters.";
+    setAuthMessage("Use a password with at least 8 characters.", "error");
     showToast("Password too short", "Use a password with at least 8 characters.", "warning");
     return;
   }
 
-  els.authMessage.textContent = "Creating account...";
+  setAuthMessage("Creating account...", "info");
   els.createAccount.disabled = true;
   const { data, error } = await withTimeout(
     supabaseClient.auth.signUp({
@@ -2116,8 +2139,9 @@ async function createAccount() {
   els.createAccount.disabled = false;
 
   if (error) {
-    els.authMessage.textContent = error.message;
-    showToast("Account creation failed", error.message, "warning");
+    const message = friendlyAuthError(error.message, "create");
+    setAuthMessage(message, "error");
+    showToast("Account creation failed", message, "warning");
     return;
   }
 
@@ -2126,9 +2150,33 @@ async function createAccount() {
     els.authDialog.close();
     showToast("Account created", "Your account is pending GIU approval.", "success");
   } else {
-    els.authMessage.textContent = "Account created. Check your email to confirm, then sign in.";
+    setAuthMessage("Account created. Check your email to confirm, then sign in.", "success");
     showToast("Account created", "Check your email to confirm, then sign in.", "success");
   }
+}
+
+function friendlyAuthError(message = "", mode = "sign-in") {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("invalid login credentials")) {
+    return "Incorrect email or password. Please check your details and try again.";
+  }
+
+  if (normalized.includes("already registered") || normalized.includes("already exists")) {
+    return "This email is already registered. Please sign in instead, or use another email address.";
+  }
+
+  if (normalized.includes("email") && normalized.includes("invalid")) {
+    return "Enter a valid email address.";
+  }
+
+  if (normalized.includes("password")) {
+    return mode === "create"
+      ? "Use a valid password with at least 8 characters."
+      : "The password entered is incorrect. Please try again.";
+  }
+
+  return message || "Something went wrong. Please try again.";
 }
 
 async function ensurePendingProfile() {

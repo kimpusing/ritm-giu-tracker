@@ -40,7 +40,22 @@
     </header>
 
     <main>
-      <section class="summary-grid" aria-label="Status summary">
+      <section class="signin-landing hidden" id="signInLanding" aria-label="Sign in">
+        <div class="signin-panel">
+          <div class="signin-copy">
+            <h2>Sign in to continue</h2>
+            <p>
+              Access is limited to approved GIU and NRL users. Use your registered account to view request statuses, summaries, and updates.
+            </p>
+          </div>
+          <div class="signin-panel-actions">
+            <button id="landingSignIn" type="button">Sign in</button>
+            <button class="secondary" id="landingCreateAccount" type="button">Create account</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="summary-grid" id="summaryGrid" aria-label="Status summary">
         <article class="metric">
           <span class="metric-label">Active Requests</span>
           <strong id="activeCount">0</strong>
@@ -63,7 +78,7 @@
         </article>
       </section>
 
-      <section class="workspace">
+      <section class="workspace" id="workspace">
         <aside class="sidebar" aria-label="Filters">
           <div class="sidebar-note" id="adminNote">
             <strong>GIU reminder</strong>
@@ -301,7 +316,7 @@
           <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" />
         </label>
 
-        <p class="form-message" id="authMessage"></p>
+        <p class="form-message auth-alert" id="authMessage" role="alert" aria-live="assertive"></p>
 
         <div class="dialog-actions compact">
           <button class="secondary" id="cancelAuth" type="button">Cancel</button>
