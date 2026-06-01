@@ -14,21 +14,33 @@ const priorities = ["High", "Medium", "Routine"];
 const giuLabName = "Genomics and Innovation Unit";
 const legacyGiuLabName = "Genomics Informatics Unit";
 const laboratories = [
-  "National Reference Laboratory for Dengue and Other Arboviruses",
-  "National Reference Laboratory for Influenza and Other Respiratory Viruses",
-  "National Reference Laboratory for Measles, Rubella, and Other Exanthems",
-  "National Reference Laboratory for Polio and Other Enteroviruses",
-  "National Rotavirus Laboratory",
-  "National Reference Laboratory for HIV/AIDS and Other Sexually Transmitted Infections",
+  "NRL Dengue and Other Arboviruses",
+  "NRL Influenza and Other Respiratory Viruses",
+  "NRL Rotavirus and Other Enteric Viruses",
+  "NRL Measles, Rubella and Other Exanthems",
+  "NRL Polio and Other Enteroviruses",
+  "Routine Diagnostics (RDS)",
+  "HIV",
 ];
-const requisitionerSections = [giuLabName, ...laboratories, "Other section"];
+const requestUnits = [giuLabName, ...laboratories];
+const requisitionerSections = [...requestUnits, "Other section"];
+const legacyLabNameMap = new Map([
+  [legacyGiuLabName, giuLabName],
+  ["National Reference Laboratory for Dengue and Other Arboviruses", laboratories[0]],
+  ["National Reference Laboratory for Influenza and Other Respiratory Viruses", laboratories[1]],
+  ["National Rotavirus Laboratory", laboratories[2]],
+  ["National Reference Laboratory for Measles, Rubella, and Other Exanthems", laboratories[3]],
+  ["National Reference Laboratory for Polio and Other Enteroviruses", laboratories[4]],
+  ["National Reference Laboratory for HIV/AIDS and Other Sexually Transmitted Infections", laboratories[6]],
+]);
 const labColorClassMap = new Map([
   [laboratories[0], "lab-dengue"],
   [laboratories[1], "lab-influenza"],
-  [laboratories[2], "lab-measles"],
-  [laboratories[3], "lab-polio"],
-  [laboratories[4], "lab-rotavirus"],
-  [laboratories[5], "lab-hiv"],
+  [laboratories[2], "lab-rotavirus"],
+  [laboratories[3], "lab-measles"],
+  [laboratories[4], "lab-polio"],
+  [laboratories[5], "lab-default"],
+  [laboratories[6], "lab-hiv"],
 ]);
 const diseasePrograms = [
   "Dengue",
@@ -69,14 +81,14 @@ const requestPageSize = 4;
 let previousLastViewed = localStorage.getItem(lastViewedKey) || "";
 
 function displayLabName(lab) {
-  return lab === legacyGiuLabName ? giuLabName : lab;
+  return legacyLabNameMap.get(lab) || lab;
 }
 
 const sampleRequests = [
   {
     id: crypto.randomUUID(),
     displayId: "GIU-2026-001",
-    lab: "National Reference Laboratory for Influenza and Other Respiratory Viruses",
+    lab: laboratories[1],
     program: "Influenza",
     project: "WGS analysis for May surveillance batch",
     stage: "Quality control",
@@ -95,7 +107,7 @@ const sampleRequests = [
   {
     id: crypto.randomUUID(),
     displayId: "GIU-2026-002",
-    lab: "National Reference Laboratory for Dengue and Other Arboviruses",
+    lab: laboratories[0],
     program: "Other Arboviruses",
     project: "Phylogenetic analysis support",
     stage: "Analysis ongoing",
@@ -114,7 +126,7 @@ const sampleRequests = [
   {
     id: crypto.randomUUID(),
     displayId: "GIU-2026-003",
-    lab: "National Reference Laboratory for Dengue and Other Arboviruses",
+    lab: laboratories[0],
     program: "Dengue",
     project: "Serotype confirmation sequencing run",
     stage: "Metadata checking",
@@ -133,7 +145,7 @@ const sampleRequests = [
   {
     id: crypto.randomUUID(),
     displayId: "GIU-2026-004",
-    lab: "National Reference Laboratory for Polio and Other Enteroviruses",
+    lab: laboratories[4],
     program: "Enteric viruses",
     project: "Protocol consultation for amplicon sequencing",
     stage: "Review and validation",
@@ -152,7 +164,7 @@ const sampleRequests = [
   {
     id: crypto.randomUUID(),
     displayId: "GIU-2026-005",
-    lab: "National Reference Laboratory for Measles, Rubella, and Other Exanthems",
+    lab: laboratories[3],
     program: "Measles/Rubella",
     project: "Monthly genotyping report",
     stage: "Report generation",
@@ -171,7 +183,7 @@ const sampleRequests = [
   {
     id: crypto.randomUUID(),
     displayId: "GIU-2026-006",
-    lab: "National Rotavirus Laboratory",
+    lab: laboratories[2],
     program: "Rotavirus",
     project: "Variant surveillance summary",
     stage: "Completed",
@@ -301,13 +313,13 @@ async function initialize() {
   fillSelect(els.stageName, stages);
   fillSelect(els.statusName, statuses);
   fillSelect(els.priorityName, priorities);
-  fillSelect(els.labName, laboratories);
+  fillSelect(els.labName, requestUnits);
   fillSelect(els.programName, diseasePrograms);
   fillSelect(els.assigneeName, staffOptions);
   fillSelect(els.requisitionerSection, requisitionerSections);
   els.requisitionerSection.insertAdjacentHTML(
     "afterbegin",
-    '<option value="">Select NRL or section</option>'
+    '<option value="">Select unit or section</option>'
   );
   els.requisitionerSection.value = "";
   fillSelect(els.requiredAssistance, assistanceOptions);
@@ -734,12 +746,12 @@ async function getAccessToken(message = "No active Supabase session was found. P
 
 function loadLocalRequests() {
   const saved = localStorage.getItem(storageKey);
-  if (!saved) return sampleRequests;
+  if (!saved) return sampleRequests.map(normalizeRequestLabels);
 
   try {
-    return JSON.parse(saved);
+    return JSON.parse(saved).map(normalizeRequestLabels);
   } catch {
-    return sampleRequests;
+    return sampleRequests.map(normalizeRequestLabels);
   }
 }
 
@@ -773,13 +785,21 @@ function cacheRequesterDetails(record) {
 
 function mergeRequesterDetails(record) {
   const cached = readRequesterCache()[record.id];
-  if (!cached) return record;
+  if (!cached) return normalizeRequestLabels(record);
 
-  return {
+  return normalizeRequestLabels({
     ...record,
     requisitionerName: record.requisitionerName || cached.requisitionerName || "",
     requisitionerSection: record.requisitionerSection || cached.requisitionerSection || "",
     requiredAssistance: record.requiredAssistance || cached.requiredAssistance || "",
+  });
+}
+
+function normalizeRequestLabels(record) {
+  return {
+    ...record,
+    lab: displayLabName(record.lab),
+    requisitionerSection: displayLabName(record.requisitionerSection || ""),
   };
 }
 
@@ -1185,7 +1205,7 @@ function requestSummaryTemplate(item) {
 
     <section class="detail-grid" aria-label="Request details">
       ${detailItemTemplate("Requested by", requestedBy)}
-      ${detailItemTemplate("Requester NRL / Section", requesterSection)}
+      ${detailItemTemplate("Requester section / unit", requesterSection)}
       ${detailItemTemplate("Required assistance", assistance)}
       ${detailItemTemplate("Disease program", item.program)}
       ${detailItemTemplate("Assigned to", item.assignee)}
@@ -1588,7 +1608,7 @@ function roleClass(role) {
 
 function labOptions(selected) {
   const normalizedSelected = displayLabName(selected);
-  const values = ["Pending assignment", giuLabName, ...laboratories];
+  const values = ["Pending assignment", ...requestUnits];
   return values
     .map((lab) => `<option value="${escapeHtml(lab)}" ${lab === normalizedSelected ? "selected" : ""}>${escapeHtml(lab)}</option>`)
     .join("");
@@ -2358,11 +2378,11 @@ function fromSupabaseRow(row) {
   return {
     id: row.id,
     displayId: row.display_id,
-    lab: row.lab,
+    lab: displayLabName(row.lab),
     program: row.program,
     project: row.project,
     requisitionerName: row.requisitioner_name || "",
-    requisitionerSection: row.requisitioner_section || "",
+    requisitionerSection: displayLabName(row.requisitioner_section || ""),
     requiredAssistance: row.required_assistance || "",
     stage: row.stage,
     status: row.status,
