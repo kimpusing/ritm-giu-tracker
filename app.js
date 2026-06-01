@@ -23,7 +23,6 @@ const laboratories = [
   "HIV",
 ];
 const requestUnits = [giuLabName, ...laboratories];
-const requisitionerSections = [...requestUnits, "Other section"];
 const legacyLabNameMap = new Map([
   [legacyGiuLabName, giuLabName],
   ["National Reference Laboratory for Dengue and Other Arboviruses", laboratories[0]],
@@ -264,7 +263,6 @@ const els = {
   programName: document.querySelector("#programName"),
   projectName: document.querySelector("#projectName"),
   requisitionerName: document.querySelector("#requisitionerName"),
-  requisitionerSection: document.querySelector("#requisitionerSection"),
   requiredAssistance: document.querySelector("#requiredAssistance"),
   stageName: document.querySelector("#stageName"),
   stagePreview: document.querySelector("#stagePreview"),
@@ -316,12 +314,6 @@ async function initialize() {
   fillSelect(els.labName, requestUnits);
   fillSelect(els.programName, diseasePrograms);
   fillSelect(els.assigneeName, staffOptions);
-  fillSelect(els.requisitionerSection, requisitionerSections);
-  els.requisitionerSection.insertAdjacentHTML(
-    "afterbegin",
-    '<option value="">Select unit or section</option>'
-  );
-  els.requisitionerSection.value = "";
   fillSelect(els.requiredAssistance, assistanceOptions);
   els.requiredAssistance.insertAdjacentHTML(
     "afterbegin",
@@ -1190,7 +1182,6 @@ function requestSummaryTemplate(item) {
   const progressClass = stageProgressClass(item.stage);
   const due = dueState(item);
   const requestedBy = item.requisitionerName || "Not recorded";
-  const requesterSection = item.requisitionerSection || "Not recorded";
   const assistance = item.requiredAssistance || "Not recorded";
 
   return `
@@ -1205,7 +1196,6 @@ function requestSummaryTemplate(item) {
 
     <section class="detail-grid" aria-label="Request details">
       ${detailItemTemplate("Requested by", requestedBy)}
-      ${detailItemTemplate("Requester section / unit", requesterSection)}
       ${detailItemTemplate("Required assistance", assistance)}
       ${detailItemTemplate("Disease program", item.program)}
       ${detailItemTemplate("Assigned to", item.assignee)}
@@ -1335,7 +1325,6 @@ function openExistingRequest(id) {
   els.programName.value = item.program;
   els.projectName.value = item.project;
   els.requisitionerName.value = item.requisitionerName || "";
-  setSelectValue(els.requisitionerSection, item.requisitionerSection || "");
   setSelectValue(els.requiredAssistance, item.requiredAssistance || "");
   els.stageName.value = item.stage;
   els.statusName.value = item.status;
@@ -1827,7 +1816,7 @@ async function saveRequest() {
       program: els.programName.value.trim(),
       project: els.projectName.value.trim(),
       requisitionerName: els.requisitionerName.value.trim(),
-      requisitionerSection: els.requisitionerSection.value.trim(),
+      requisitionerSection: els.labName.value.trim(),
       requiredAssistance: els.requiredAssistance.value.trim(),
       stage: els.stageName.value,
       status: els.statusName.value,
