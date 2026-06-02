@@ -359,12 +359,18 @@ main {
 
 .metric {
   position: relative;
+  display: block;
+  width: 100%;
+  min-height: 112px;
+  text-align: left;
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 17px 18px;
   box-shadow: var(--soft-shadow);
+  color: var(--ink);
+  font-weight: 400;
 }
 
 .metric::before {
@@ -379,7 +385,7 @@ main {
   display: block;
   color: var(--muted);
   font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 650;
 }
 
 .metric strong {
@@ -387,6 +393,7 @@ main {
   margin-top: 8px;
   font-size: 1.9rem;
   line-height: 1;
+  font-weight: 700;
 }
 
 .metric-hint {
@@ -394,6 +401,35 @@ main {
   margin-top: 8px;
   color: var(--muted);
   font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.metric-button {
+  cursor: pointer;
+}
+
+.metric-button:hover {
+  border-color: #bdd6dd;
+  background: linear-gradient(135deg, rgba(11, 117, 111, 0.045), #ffffff 58%);
+  filter: none;
+  transform: translateY(-1px);
+}
+
+.metric-button:focus-visible {
+  outline: 3px solid rgba(11, 117, 111, 0.22);
+  outline-offset: 2px;
+}
+
+.metric-button.is-active {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  background:
+    linear-gradient(135deg, rgba(11, 117, 111, 0.095), rgba(49, 95, 155, 0.045)),
+    var(--surface);
+  box-shadow: 0 14px 30px rgba(28, 51, 61, 0.12);
+}
+
+.metric-button.is-active::before {
+  width: 6px;
 }
 
 .workspace {

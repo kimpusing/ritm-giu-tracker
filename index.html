@@ -58,21 +58,21 @@
       </section>
 
       <section class="summary-grid" id="summaryGrid" aria-label="Status summary">
-        <article class="metric">
+        <button class="metric metric-button" id="activeMetric" type="button" data-metric-filter="active" aria-pressed="false">
           <span class="metric-label">Active Requests</span>
           <strong id="activeCount">0</strong>
-          <span class="metric-hint">Open GIU work items</span>
-        </article>
-        <article class="metric">
+          <span class="metric-hint">Moving GIU work items</span>
+        </button>
+        <button class="metric metric-button" id="holdMetric" type="button" data-metric-filter="hold" aria-pressed="false">
           <span class="metric-label">On Hold</span>
           <strong id="holdCount">0</strong>
           <span class="metric-hint">Needs input or paused</span>
-        </article>
-        <article class="metric">
+        </button>
+        <button class="metric metric-button" id="completedMetric" type="button" data-metric-filter="completed" aria-pressed="false">
           <span class="metric-label">Completed</span>
           <strong id="doneCount">0</strong>
           <span class="metric-hint">Closed requests</span>
-        </article>
+        </button>
         <article class="metric">
           <span class="metric-label">Median Turnaround</span>
           <strong id="tatValue">0d</strong>

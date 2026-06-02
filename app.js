@@ -203,6 +203,7 @@ const sampleRequests = [
 let requests = [];
 let activeView = "queue";
 let currentPage = 1;
+let metricFilter = "all";
 let supabaseClient = null;
 let currentUser = null;
 let currentSession = null;
@@ -223,6 +224,7 @@ const els = {
   landingSignIn: document.querySelector("#landingSignIn"),
   landingCreateAccount: document.querySelector("#landingCreateAccount"),
   summaryGrid: document.querySelector("#summaryGrid"),
+  metricButtons: document.querySelectorAll("[data-metric-filter]"),
   workspace: document.querySelector("#workspace"),
   resultCount: document.querySelector("#resultCount"),
   queueList: document.querySelector("#queueList"),
@@ -339,8 +341,13 @@ function bindEvents() {
     els.stageFilter.value = "All";
     els.statusFilter.value = "All";
     els.priorityFilter.value = "All";
+    metricFilter = "all";
     resetCurrentPage();
     render();
+  });
+
+  els.metricButtons.forEach((button) => {
+    button.addEventListener("click", () => applyMetricFilter(button.dataset.metricFilter));
   });
 
   els.queueView.addEventListener("click", () => switchView("queue"));
@@ -896,7 +903,7 @@ function render() {
   updateSessionInfo();
   const filtered = getFilteredRequests();
   renderSummary();
-  els.resultCount.textContent = `Showing ${filtered.length} ${filtered.length === 1 ? "request" : "requests"}`;
+  els.resultCount.textContent = resultCountText(filtered.length);
 
   if (activeView === "queue") {
     renderQueue(filtered);
@@ -954,6 +961,39 @@ function resetCurrentPage() {
   currentPage = 1;
 }
 
+function applyMetricFilter(filter) {
+  metricFilter = metricFilter === filter ? "all" : filter;
+  resetCurrentPage();
+  render();
+  document.querySelector(".content-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function matchesMetricFilter(item) {
+  if (metricFilter === "active") return isActiveRequest(item);
+  if (metricFilter === "hold") return item.status === "On hold" || item.status === "Needs input";
+  if (metricFilter === "completed") return item.status === "Completed";
+  return true;
+}
+
+function isActiveRequest(item) {
+  return item.status !== "Completed" && item.status !== "On hold" && item.status !== "Needs input";
+}
+
+function metricFilterLabel() {
+  const labels = {
+    active: "active requests",
+    hold: "on-hold or needs-input requests",
+    completed: "completed requests",
+  };
+  return labels[metricFilter] || "";
+}
+
+function resultCountText(count) {
+  const base = `Showing ${count} ${count === 1 ? "request" : "requests"}`;
+  const label = metricFilterLabel();
+  return label ? `${base} - ${label}` : base;
+}
+
 function updateFilterOptions() {
   const current = {
     lab: els.labFilter.value || "All",
@@ -986,13 +1026,14 @@ function getFilteredRequests() {
       matches(els.labFilter.value, item.lab) &&
       matches(els.stageFilter.value, item.stage) &&
       matches(els.statusFilter.value, item.status) &&
-      matches(els.priorityFilter.value, item.priority)
+      matches(els.priorityFilter.value, item.priority) &&
+      matchesMetricFilter(item)
     );
   });
 }
 
 function renderSummary() {
-  const active = requests.filter((item) => item.status !== "Completed").length;
+  const active = requests.filter(isActiveRequest).length;
   const hold = requests.filter((item) => item.status === "On hold" || item.status === "Needs input").length;
   const done = requests.filter((item) => item.status === "Completed").length;
   const completedDurations = requests
@@ -1004,6 +1045,11 @@ function renderSummary() {
   els.holdCount.textContent = hold;
   els.doneCount.textContent = done;
   els.tatValue.textContent = completedDurations.length ? `${median(completedDurations)}d` : "N/A";
+  els.metricButtons.forEach((button) => {
+    const isActive = metricFilter === button.dataset.metricFilter;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
 }
 
 function renderQueue(items) {
@@ -1079,7 +1125,7 @@ function renderNrlBoard(items) {
 
   els.nrlBoard.innerHTML = Object.entries(grouped)
     .map(([lab, labItems]) => {
-      const active = labItems.filter((item) => item.status !== "Completed").length;
+      const active = labItems.filter(isActiveRequest).length;
       const labClass = labClassName(lab);
       return `
         <article class="nrl-column ${labClass}">
