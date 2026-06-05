@@ -315,6 +315,11 @@
           <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" />
         </label>
 
+        <label class="wide-label hidden" id="authConfirmPasswordLabel">
+          Confirm Password
+          <input id="authConfirmPassword" type="password" placeholder="Confirm password" autocomplete="new-password" />
+        </label>
+
         <button class="link-button" id="forgotPassword" type="button">Forgot password?</button>
 
         <p class="form-message auth-alert" id="authMessage" role="alert" aria-live="assertive"></p>
@@ -323,6 +328,7 @@
           <button class="secondary" id="cancelAuth" type="button">Cancel</button>
           <button id="passwordSignIn" value="default" type="button">Sign In</button>
           <button class="hidden" id="createAccount" value="default" type="button">Create Account</button>
+          <button class="hidden" id="saveNewPassword" value="default" type="button">Save New Password</button>
         </div>
       </form>
     </dialog>

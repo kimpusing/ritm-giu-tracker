@@ -214,6 +214,8 @@ let isSyncing = false;
 let profileError = "";
 let suggestedDisplayId = "";
 let profileNoticeShownForUser = "";
+let authMode = "sign-in";
+let passwordRecoveryPending = false;
 
 const els = {
   activeCount: document.querySelector("#activeCount"),
@@ -292,18 +294,22 @@ const els = {
   cancelAuth: document.querySelector("#cancelAuth"),
   authTitle: document.querySelector("#authTitle"),
   authCopy: document.querySelector("#authCopy"),
+  authModeTabs: document.querySelector(".auth-mode-tabs"),
   authModeSignIn: document.querySelector("#authModeSignIn"),
   authModeCreate: document.querySelector("#authModeCreate"),
   authNameLabel: document.querySelector("#authNameLabel"),
   authName: document.querySelector("#authName"),
   authEmail: document.querySelector("#authEmail"),
   authPassword: document.querySelector("#authPassword"),
+  authConfirmPasswordLabel: document.querySelector("#authConfirmPasswordLabel"),
+  authConfirmPassword: document.querySelector("#authConfirmPassword"),
   authMessage: document.querySelector("#authMessage"),
   forgotPassword: document.querySelector("#forgotPassword"),
   passwordResetDialog: document.querySelector("#passwordResetDialog"),
   closePasswordResetDialog: document.querySelector("#closePasswordResetDialog"),
   createAccount: document.querySelector("#createAccount"),
   passwordSignIn: document.querySelector("#passwordSignIn"),
+  saveNewPassword: document.querySelector("#saveNewPassword"),
 };
 
 initialize();
@@ -380,6 +386,7 @@ function bindEvents() {
   els.authModeCreate.addEventListener("click", () => setAuthMode("create"));
   els.createAccount.addEventListener("click", createAccount);
   els.passwordSignIn.addEventListener("click", passwordSignIn);
+  els.saveNewPassword.addEventListener("click", saveNewPassword);
   els.forgotPassword.addEventListener("click", resetPassword);
   els.closePasswordResetDialog.addEventListener("click", () => els.passwordResetDialog.close());
   els.closeAuthDialog.addEventListener("click", closeAuthDialog);
@@ -406,6 +413,7 @@ async function initializeDataSource() {
     return;
   }
 
+  passwordRecoveryPending = hasPasswordRecoveryRedirect();
   supabaseClient = window.supabase.createClient(config.url, config.anonKey, {
     auth: {
       autoRefreshToken: true,
@@ -413,6 +421,7 @@ async function initializeDataSource() {
       persistSession: true,
     },
   });
+  listenForAuthChanges();
   await finishAuthRedirect();
   const sessionResult = await withTimeout(
     supabaseClient.auth.getSession(),
@@ -422,20 +431,29 @@ async function initializeDataSource() {
   currentSession = sessionResult.data?.session || null;
   cachedAccessToken = currentSession?.access_token || readStoredAccessToken();
   currentUser = currentSession?.user || null;
+  if (hasPasswordRecoveryRedirect()) {
+    passwordRecoveryPending = true;
+  }
   if (currentUser) {
     await ensurePendingProfile();
   }
   await loadProfile();
   await loadSupabaseRequests();
-  listenForAuthChanges();
   setupPassiveSync();
+  if (passwordRecoveryPending && currentSession) {
+    openPasswordRecoveryDialog();
+  }
 }
 
 function listenForAuthChanges() {
-  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
     currentSession = session || null;
     cachedAccessToken = session?.access_token || "";
     currentUser = session?.user || null;
+    if (event === "PASSWORD_RECOVERY") {
+      passwordRecoveryPending = true;
+      openPasswordRecoveryDialog();
+    }
     await loadProfile();
     await loadSupabaseRequests();
     render();
@@ -652,11 +670,16 @@ async function fetchRequestsDirect() {
 
 async function finishAuthRedirect() {
   const params = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const code = params.get("code");
-  const errorDescription = params.get("error_description");
+  const errorDescription = params.get("error_description") || hashParams.get("error_description");
+  const errorCode = params.get("error_code") || hashParams.get("error_code");
+  const isRecoveryRedirect = params.get("type") === "recovery"
+    || params.get("password_reset") === "1"
+    || hashParams.get("type") === "recovery";
 
   if (errorDescription) {
-    setMode("Sign-in error", errorDescription);
+    handleAuthRedirectError(errorDescription, errorCode);
     return;
   }
 
@@ -668,7 +691,38 @@ async function finishAuthRedirect() {
     return;
   }
 
+  if (isRecoveryRedirect) {
+    passwordRecoveryPending = true;
+  }
   window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+}
+
+function handleAuthRedirectError(errorDescription = "", errorCode = "") {
+  const message = friendlyAuthError(errorDescription, "reset");
+  setMode("Password reset issue", message);
+  window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+  openAuthDialog("sign-in");
+  setAuthMessage(message, "error");
+  showToast("Reset link issue", message, "warning");
+}
+
+function passwordResetRedirectUrl() {
+  const url = new URL(`${window.location.origin}${window.location.pathname}`);
+  url.searchParams.set("password_reset", "1");
+  return url.toString();
+}
+
+function hasPasswordRecoveryRedirect() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return searchParams.get("password_reset") === "1"
+    || searchParams.get("type") === "recovery"
+    || hashParams.get("type") === "recovery";
+}
+
+function openPasswordRecoveryDialog() {
+  openAuthDialog("reset");
+  setAuthMessage("Enter and confirm your new password.", "info");
 }
 
 function supabaseProjectRef() {
@@ -2172,6 +2226,7 @@ async function handleAuthButton() {
 function openAuthDialog(mode = "sign-in") {
   els.authEmail.value = "";
   els.authPassword.value = "";
+  els.authConfirmPassword.value = "";
   els.authName.value = "";
   setAuthMessage();
   setAuthMode(mode);
@@ -2180,37 +2235,59 @@ function openAuthDialog(mode = "sign-in") {
 
 function closeAuthDialog() {
   els.authForm.reset();
+  if (authMode === "reset") {
+    passwordRecoveryPending = false;
+  }
   setAuthMessage();
   els.authDialog.close();
 }
 
 function setAuthMode(mode) {
+  authMode = mode;
   const isCreate = mode === "create";
-  els.authTitle.textContent = isCreate ? "Create GIU Tracker Account" : "GIU Tracker Sign In";
-  els.authCopy.textContent = isCreate
-    ? "Create an account, then wait for GIU approval before request records are shown."
-    : "Sign in with your registered email and password.";
-  els.authModeSignIn.classList.toggle("active", !isCreate);
+  const isReset = mode === "reset";
+  els.authTitle.textContent = isReset
+    ? "Set New Password"
+    : isCreate
+      ? "Create GIU Tracker Account"
+      : "GIU Tracker Sign In";
+  els.authCopy.textContent = isReset
+    ? "Create a new password for your GIU Tracker account."
+    : isCreate
+      ? "Create an account, then wait for GIU approval before request records are shown."
+      : "Sign in with your registered email and password.";
+  els.authModeSignIn.classList.toggle("active", !isCreate && !isReset);
   els.authModeCreate.classList.toggle("active", isCreate);
+  els.authModeTabs.classList.toggle("hidden", isReset);
   els.authNameLabel.classList.toggle("hidden", !isCreate);
-  els.passwordSignIn.classList.toggle("hidden", isCreate);
-  els.forgotPassword.classList.toggle("hidden", isCreate);
+  els.authEmail.closest("label").classList.toggle("hidden", isReset);
+  els.authConfirmPasswordLabel.classList.toggle("hidden", !isReset);
+  els.passwordSignIn.classList.toggle("hidden", isCreate || isReset);
+  els.forgotPassword.classList.toggle("hidden", isCreate || isReset);
   els.createAccount.classList.toggle("hidden", !isCreate);
-  els.authPassword.autocomplete = isCreate ? "new-password" : "current-password";
+  els.saveNewPassword.classList.toggle("hidden", !isReset);
+  els.authPassword.autocomplete = isCreate || isReset ? "new-password" : "current-password";
+  els.authPassword.placeholder = isReset ? "New password" : "Password";
+  els.cancelAuth.textContent = isReset ? "Close" : "Cancel";
   setAuthMessage();
 }
 
 function isCreateAuthMode() {
-  return !els.createAccount.classList.contains("hidden");
+  return authMode === "create";
 }
 
 function submitActiveAuthMode() {
-  const isCreate = isCreateAuthMode();
-  const button = isCreate ? els.createAccount : els.passwordSignIn;
+  const button = authMode === "create"
+    ? els.createAccount
+    : authMode === "reset"
+      ? els.saveNewPassword
+      : els.passwordSignIn;
   if (button.disabled) return;
 
-  if (isCreate) {
+  if (authMode === "create") {
     createAccount();
+  } else if (authMode === "reset") {
+    saveNewPassword();
   } else {
     passwordSignIn();
   }
@@ -2330,7 +2407,7 @@ async function resetPassword() {
   els.forgotPassword.disabled = true;
   const { error } = await withTimeout(
     supabaseClient.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}${window.location.pathname}`,
+      redirectTo: passwordResetRedirectUrl(),
     }),
     8000,
     "Supabase took too long to send the password reset email. Please retry once."
@@ -2349,8 +2426,68 @@ async function resetPassword() {
   showToast("Reset email sent", "Check your inbox for the password reset link.", "success");
 }
 
+async function saveNewPassword() {
+  const password = els.authPassword.value;
+  const confirmPassword = els.authConfirmPassword.value;
+
+  if (!currentSession) {
+    setAuthMessage("This reset link has expired. Please request a new password reset email.", "error");
+    showToast("Reset link expired", "Request a new password reset email, then try again.", "warning");
+    return;
+  }
+
+  if (!password || password.length < 8) {
+    setAuthMessage("Use a new password with at least 8 characters.", "error");
+    showToast("Password too short", "Use a new password with at least 8 characters.", "warning");
+    els.authPassword.focus();
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    setAuthMessage("Passwords do not match. Please re-enter the confirmation password.", "error");
+    showToast("Passwords do not match", "Re-enter the confirmation password and try again.", "warning");
+    els.authConfirmPassword.focus();
+    return;
+  }
+
+  setAuthMessage("Saving new password...", "info");
+  els.saveNewPassword.disabled = true;
+  const { error } = await withTimeout(
+    supabaseClient.auth.updateUser({ password }),
+    8000,
+    "Supabase took too long to update your password. Please retry once."
+  );
+  els.saveNewPassword.disabled = false;
+
+  if (error) {
+    const message = friendlyAuthError(error.message, "reset");
+    setAuthMessage(message, "error");
+    showToast("Password update failed", message, "warning");
+    return;
+  }
+
+  passwordRecoveryPending = false;
+  window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+  els.authDialog.close();
+  showToast("Password updated", "Your new password has been saved.", "success");
+  await ensurePendingProfile();
+  await loadProfile();
+  await loadSupabaseRequests();
+  render();
+}
+
 function friendlyAuthError(message = "", mode = "sign-in") {
   const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("otp_expired")
+    || normalized.includes("expired")
+    || normalized.includes("invalid or has expired")
+  ) {
+    return mode === "reset"
+      ? "This password reset link is expired or was already used. Please request a new reset email and open the newest link."
+      : "This sign-in link is expired or invalid. Please request a new link.";
+  }
 
   if (normalized.includes("invalid login credentials")) {
     return "Incorrect email or password. Please check your details and try again.";
