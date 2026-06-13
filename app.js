@@ -80,7 +80,8 @@ const requestPageSize = 4;
 let previousLastViewed = localStorage.getItem(lastViewedKey) || "";
 
 function displayLabName(lab) {
-  return legacyLabNameMap.get(lab) || lab;
+  const normalizedLab = (lab || "").trim();
+  return legacyLabNameMap.get(normalizedLab) || normalizedLab;
 }
 
 const sampleRequests = [
@@ -956,13 +957,14 @@ function render() {
   updateAccessControls();
   updateSessionInfo();
   const filtered = getFilteredRequests();
+  const sorted = sortRequestsForView(filtered);
   renderSummary();
-  els.resultCount.textContent = resultCountText(filtered.length);
+  els.resultCount.textContent = resultCountText(sorted.length);
 
   if (activeView === "queue") {
-    renderQueue(filtered);
+    renderQueue(sorted);
   } else {
-    renderNrlBoard(filtered);
+    renderNrlBoard(sorted);
   }
 }
 
@@ -1084,6 +1086,48 @@ function getFilteredRequests() {
       matchesMetricFilter(item)
     );
   });
+}
+
+function sortRequestsForView(items) {
+  return activeView === "nrl" ? sortRequestsForNrlBoard(items) : sortRequestsForQueue(items);
+}
+
+function sortRequestsForQueue(items) {
+  return [...items].sort(compareRequestIdDesc);
+}
+
+function sortRequestsForNrlBoard(items) {
+  return [...items].sort((a, b) => {
+    const labDiff = labSortIndex(a.lab) - labSortIndex(b.lab);
+    if (labDiff) return labDiff;
+    return compareRequestIdDesc(a, b);
+  });
+}
+
+function compareRequestIdDesc(a, b) {
+  const aYear = requestYear(a.displayId);
+  const bYear = requestYear(b.displayId);
+  if (aYear !== bYear) return bYear - aYear;
+
+  const numberDiff = requestNumber(b.displayId) - requestNumber(a.displayId);
+  if (numberDiff) return numberDiff;
+
+  return String(b.displayId || "").localeCompare(String(a.displayId || ""));
+}
+
+function requestYear(displayId) {
+  const match = /^GIU-(\d{4})-\d+$/i.exec(String(displayId || ""));
+  return match ? Number(match[1]) : 0;
+}
+
+function requestNumber(displayId) {
+  const match = /^GIU-\d{4}-(\d+)$/i.exec(String(displayId || ""));
+  return match ? Number(match[1]) : 0;
+}
+
+function labSortIndex(lab) {
+  const index = requestUnits.indexOf(displayLabName(lab));
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
 function renderSummary() {
@@ -2719,7 +2763,7 @@ function priorityClass(priority) {
 }
 
 function labClassName(lab) {
-  return labColorClassMap.get(lab) || "lab-default";
+  return labColorClassMap.get(displayLabName(lab)) || "lab-default";
 }
 
 function dueState(item) {
