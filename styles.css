@@ -1011,7 +1011,6 @@ textarea:focus {
 }
 
 .mini-request {
-  --lab-color: var(--accent);
   display: grid;
   gap: 8px;
   border-left: 4px solid var(--lab-color);
@@ -1049,15 +1048,21 @@ textarea:focus {
 }
 
 .mini-request.is-overdue {
-  background: linear-gradient(90deg, rgba(174, 52, 56, 0.055), #fbfcfd 32%);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--lab-bg) 58%, transparent), #fbfcfd 46%),
+    linear-gradient(90deg, rgba(174, 52, 56, 0.045), transparent 42%);
 }
 
 .mini-request.is-due-soon {
-  background: linear-gradient(90deg, rgba(167, 101, 0, 0.055), #fbfcfd 32%);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--lab-bg) 58%, transparent), #fbfcfd 46%),
+    linear-gradient(90deg, rgba(167, 101, 0, 0.045), transparent 42%);
 }
 
 .mini-request.is-complete {
-  background: linear-gradient(90deg, rgba(35, 116, 72, 0.055), #fbfcfd 32%);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--lab-bg) 58%, transparent), #fbfcfd 46%),
+    linear-gradient(90deg, rgba(35, 116, 72, 0.045), transparent 42%);
 }
 
 .empty-state {
