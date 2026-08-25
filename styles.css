@@ -618,7 +618,7 @@ textarea:focus {
   background: var(--surface);
 }
 
-@media (min-width: 1500px) {
+@media (min-width: 1280px) {
   .request-row {
     grid-template-columns:
       minmax(360px, 1fr)
