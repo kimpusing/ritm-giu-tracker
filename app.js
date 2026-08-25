@@ -222,7 +222,6 @@ const els = {
   activeCount: document.querySelector("#activeCount"),
   holdCount: document.querySelector("#holdCount"),
   doneCount: document.querySelector("#doneCount"),
-  tatValue: document.querySelector("#tatValue"),
   signInLanding: document.querySelector("#signInLanding"),
   landingSignIn: document.querySelector("#landingSignIn"),
   landingCreateAccount: document.querySelector("#landingCreateAccount"),
@@ -273,7 +272,8 @@ const els = {
   stagePreview: document.querySelector("#stagePreview"),
   statusName: document.querySelector("#statusName"),
   priorityName: document.querySelector("#priorityName"),
-  assigneeName: document.querySelector("#assigneeName"),
+  assigneeOptions: document.querySelector("#assigneeOptions"),
+  assigneeError: document.querySelector("#assigneeError"),
   receivedDate: document.querySelector("#receivedDate"),
   targetDate: document.querySelector("#targetDate"),
   notesText: document.querySelector("#notesText"),
@@ -322,7 +322,7 @@ async function initialize() {
   fillSelect(els.priorityName, priorities);
   fillSelect(els.labName, requestUnits);
   fillSelect(els.programName, diseasePrograms);
-  fillSelect(els.assigneeName, staffOptions);
+  renderAssigneeOptions();
   fillSelect(els.requiredAssistance, assistanceOptions);
   els.requiredAssistance.insertAdjacentHTML(
     "afterbegin",
@@ -393,6 +393,9 @@ function bindEvents() {
   els.closeAuthDialog.addEventListener("click", closeAuthDialog);
   els.cancelAuth.addEventListener("click", closeAuthDialog);
   els.stageName.addEventListener("input", updateStagePreview);
+  els.assigneeOptions.addEventListener("change", () => {
+    if (selectedAssignees().length) clearAssigneeValidation();
+  });
 }
 
 async function initializeDataSource() {
@@ -1134,15 +1137,10 @@ function renderSummary() {
   const active = requests.filter(isActiveRequest).length;
   const hold = requests.filter((item) => item.status === "On hold" || item.status === "Needs input").length;
   const done = requests.filter((item) => item.status === "Completed").length;
-  const completedDurations = requests
-    .filter((item) => item.status === "Completed")
-    .map((item) => dayDiff(item.received, item.updated))
-    .filter((value) => Number.isFinite(value));
 
   els.activeCount.textContent = active;
   els.holdCount.textContent = hold;
   els.doneCount.textContent = done;
-  els.tatValue.textContent = completedDurations.length ? `${median(completedDurations)}d` : "N/A";
   els.metricButtons.forEach((button) => {
     const isActive = metricFilter === button.dataset.metricFilter;
     button.classList.toggle("is-active", isActive);
@@ -1293,12 +1291,6 @@ function requestRowTemplate(item) {
           <span class="progress-bar" style="width: ${progress}%"></span>
         </span>
       </div>
-      <div class="request-status-meta">
-        <span class="pill ${statusClass(item.status)}">${escapeHtml(item.status)}</span>
-        <p class="date-line ${due.className}">${escapeHtml(due.label)}</p>
-        <p class="date-line">Updated ${formatDate(item.updated)}</p>
-        <p class="date-line ${priorityClass(item.priority)}">${escapeHtml(item.priority)} priority</p>
-      </div>
       <div class="row-actions">${action}</div>
     </article>
   `;
@@ -1441,6 +1433,7 @@ async function openNewRequest() {
     els.dialogTitle.textContent = "New Request";
     els.deleteRequest.classList.add("hidden");
     els.form.reset();
+    renderAssigneeOptions();
     setRequestSaveMessage();
     els.requestId.value = "";
     suggestedDisplayId = nextDisplayId();
@@ -1473,7 +1466,7 @@ function openExistingRequest(id) {
   els.stageName.value = item.stage;
   els.statusName.value = item.status;
   els.priorityName.value = item.priority;
-  els.assigneeName.value = item.assignee;
+  renderAssigneeOptions(item.assignee);
   els.receivedDate.value = item.received;
   els.targetDate.value = item.target;
   els.notesText.value = item.notes || "";
@@ -1498,6 +1491,7 @@ function closeRequestDialog() {
   suggestedDisplayId = "";
   setRequestSaveMessage();
   els.form.reset();
+  renderAssigneeOptions();
   els.dialog.close();
 }
 
@@ -1944,6 +1938,7 @@ async function deleteUserProfileDirect(userId) {
 
 async function saveRequest() {
   if (!els.form.reportValidity()) return;
+  if (!validateAssigneeSelection({ focus: true })) return;
 
   const originalText = els.saveRequest.textContent;
   els.saveRequest.disabled = true;
@@ -1965,7 +1960,7 @@ async function saveRequest() {
       stage: els.stageName.value,
       status: els.statusName.value,
       priority: els.priorityName.value,
-      assignee: els.assigneeName.value.trim(),
+      assignee: serializeAssignees(selectedAssignees()),
       received: els.receivedDate.value,
       target: els.targetDate.value,
       updated: todayString(),
@@ -2639,6 +2634,76 @@ function fillSelect(select, values, allLabel = null) {
   select.innerHTML = options.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
 }
 
+function normalizeAssigneeValues(values) {
+  const seen = new Set();
+  return values
+    .map((value) => String(value || "").trim())
+    .filter((value) => {
+      if (!value) return false;
+      const key = value.toLocaleLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function parseAssignees(value) {
+  const values = Array.isArray(value) ? value : String(value || "").split(",");
+  return normalizeAssigneeValues(values);
+}
+
+function serializeAssignees(values) {
+  return normalizeAssigneeValues(values).join(", ");
+}
+
+function renderAssigneeOptions(value = "") {
+  const selected = parseAssignees(value);
+  const selectedKeys = new Set(selected.map((name) => name.toLocaleLowerCase()));
+  const staffKeys = new Set(staffOptions.map((name) => name.toLocaleLowerCase()));
+  const legacyValues = selected.filter((name) => !staffKeys.has(name.toLocaleLowerCase()));
+  const optionValues = [...staffOptions, ...legacyValues];
+
+  els.assigneeOptions.innerHTML = optionValues
+    .map((name, index) => {
+      const checked = selectedKeys.has(name.toLocaleLowerCase()) ? " checked" : "";
+      const legacy = staffKeys.has(name.toLocaleLowerCase())
+        ? ""
+        : '<small class="assignee-legacy-label">Legacy</small>';
+      return `
+        <label class="assignee-option" for="assigneeOption${index}">
+          <input id="assigneeOption${index}" type="checkbox" value="${escapeHtml(name)}"${checked} />
+          <span class="assignee-option-copy">
+            <span>${escapeHtml(name)}</span>
+            ${legacy}
+          </span>
+        </label>
+      `;
+    })
+    .join("");
+
+  clearAssigneeValidation();
+}
+
+function selectedAssignees() {
+  return [...els.assigneeOptions.querySelectorAll('input[type="checkbox"]:checked')]
+    .map((checkbox) => checkbox.value);
+}
+
+function clearAssigneeValidation() {
+  els.assigneeOptions.setAttribute("aria-invalid", "false");
+  els.assigneeError.classList.add("hidden");
+}
+
+function validateAssigneeSelection({ focus = false } = {}) {
+  const isValid = selectedAssignees().length > 0;
+  els.assigneeOptions.setAttribute("aria-invalid", String(!isValid));
+  els.assigneeError.classList.toggle("hidden", isValid);
+  if (!isValid && focus) {
+    els.assigneeOptions.querySelector('input[type="checkbox"]')?.focus();
+  }
+  return isValid;
+}
+
 function uniqueValues(values) {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
@@ -2758,10 +2823,6 @@ function statusClass(status) {
   return `status-${status.toLowerCase().replace(/\s+/g, "-")}`;
 }
 
-function priorityClass(priority) {
-  return `priority-${priority.toLowerCase()}`;
-}
-
 function labClassName(lab) {
   return labColorClassMap.get(displayLabName(lab)) || "lab-default";
 }
@@ -2842,12 +2903,6 @@ function dayDiff(start, end) {
   const startDate = new Date(`${start}T00:00:00`);
   const endDate = new Date(`${end}T00:00:00`);
   return Math.round((endDate - startDate) / 86400000);
-}
-
-function median(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
 function escapeHtml(value) {

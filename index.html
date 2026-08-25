@@ -73,11 +73,6 @@
           <strong id="doneCount">0</strong>
           <span class="metric-hint">Closed requests</span>
         </button>
-        <article class="metric">
-          <span class="metric-label">Median Turnaround</span>
-          <strong id="tatValue">0d</strong>
-          <span class="metric-hint">Completed request median</span>
-        </article>
       </section>
 
       <section class="workspace" id="workspace">
@@ -224,10 +219,17 @@
             Priority
             <select id="priorityName" required></select>
           </label>
-          <label>
-            Assigned To
-            <select id="assigneeName" required></select>
-          </label>
+          <fieldset class="assignee-fieldset">
+            <legend>Assigned GIU Staff <span aria-hidden="true">*</span></legend>
+            <div
+              id="assigneeOptions"
+              class="assignee-options"
+              role="group"
+              aria-describedby="assigneeHelp assigneeError"
+            ></div>
+            <span class="field-help" id="assigneeHelp">Select one or more GIU staff members.</span>
+            <span class="field-error hidden" id="assigneeError" role="alert">Select at least one GIU staff member.</span>
+          </fieldset>
           <label>
             Date Received
             <input id="receivedDate" type="date" required />

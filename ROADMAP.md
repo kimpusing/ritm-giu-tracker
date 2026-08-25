@@ -191,3 +191,9 @@ Potential Future Features:
 This project was initially developed as a personal learning exercise and proof-of-concept prototype following discussions on improving visibility of GIU-supported work across the Virology Department NRLs.
 
 The system is currently in pilot testing and should not yet be considered production-ready until security hardening, audit logging, backup strategies, and broader user testing are completed.
+
+## Multi-Staff Assignment Storage
+
+During the prototype phase, multiple GIU staff assignments are stored in the existing `giu_requests.assignee` text column as a normalized comma-separated value (for example, `GIU - Kim, GIU - Bea`). Existing single-assignee records remain valid and are interpreted as a one-person assignment. Unknown legacy values are retained when a request is opened and saved.
+
+This format is temporary. It assumes staff display names do not contain commas and is not suitable for relational reporting or durable staff identity management. A future production migration should introduce a normalized request-to-staff relationship table, backfill the current text values, add appropriate indexes and foreign keys, and apply RLS policies consistent with the existing request permissions. That migration must be reviewed and approved before any live Supabase schema or data changes are made.
