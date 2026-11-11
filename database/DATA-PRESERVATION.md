@@ -21,7 +21,9 @@ review against the originating app version before any proposed import.
 
 ## Browser inventory and capture
 
-Browser capture remains open. Computer Use could not verify Chrome's URL and ended.
+The user excluded browser backup collection from this local update. The reported
+Excel work-queue sheet has not been inspected. Existing snapshots remain available.
+Computer Use previously could not verify Chrome's URL and ended.
 Record each browser, profile label, device, exact GIU origin, capture time, and export
 filename. Ask staff about older file-based builds and localhost ports as well as the
 hosted site. A snapshot with all four keys absent is useful inventory evidence.
@@ -66,7 +68,7 @@ constraints. Foreign keys, triggers, authentication recovery, full schema restor
 and storage services require a separate full disaster-recovery rehearsal.
 The captured snapshot excludes Auth passwords/tokens and browser storage.
 
-Before any migration, reconcile every inventoried browser export, review conflicts and
-seeded examples, preserve original IDs and source files, and agree on the final write
-freeze and recovery point. Phase two remains open until the browser inventory and
-captures are complete.
+Local application updates can proceed under the user-approved reduced preservation
+scope. Browser capture remains unverified. If a future change imports or removes data,
+review the actual source records, conflicts, seeded examples, IDs, and recovery point
+as part of that change.

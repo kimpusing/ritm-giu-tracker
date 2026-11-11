@@ -214,6 +214,8 @@ let syncTimer = null;
 let isSyncing = false;
 let profileError = "";
 let suggestedDisplayId = "";
+let editingRequestUpdatedAt = "";
+let newRequestId = "";
 let profileNoticeShownForUser = "";
 let authMode = "sign-in";
 let passwordRecoveryPending = false;
@@ -1436,6 +1438,8 @@ async function openNewRequest() {
     renderAssigneeOptions();
     setRequestSaveMessage();
     els.requestId.value = "";
+    editingRequestUpdatedAt = "";
+    newRequestId = crypto.randomUUID();
     suggestedDisplayId = nextDisplayId();
     els.displayId.value = suggestedDisplayId;
     els.receivedDate.valueAsDate = new Date();
@@ -1457,6 +1461,8 @@ function openExistingRequest(id) {
   els.dialogTitle.textContent = "Update Request";
   els.deleteRequest.classList.toggle("hidden", !canDeleteRequests());
   els.requestId.value = item.id;
+  editingRequestUpdatedAt = item.serverUpdatedAt || "";
+  newRequestId = "";
   els.displayId.value = item.displayId;
   els.labName.value = item.lab;
   els.programName.value = item.program;
@@ -1489,6 +1495,8 @@ function updateStagePreview() {
 
 function closeRequestDialog() {
   suggestedDisplayId = "";
+  editingRequestUpdatedAt = "";
+  newRequestId = "";
   setRequestSaveMessage();
   els.form.reset();
   renderAssigneeOptions();
@@ -1944,12 +1952,14 @@ async function saveRequest() {
   els.saveRequest.disabled = true;
   els.saveRequest.textContent = "Saving...";
   setRequestSaveMessage("Saving request...", "info");
+  let saveWarning = "";
 
   try {
-    const id = els.requestId.value || crypto.randomUUID();
+    const id = els.requestId.value || (newRequestId ||= crypto.randomUUID());
     const isExisting = Boolean(els.requestId.value);
     const record = {
       id,
+      serverUpdatedAt: editingRequestUpdatedAt,
       displayId: els.displayId.value.trim(),
       lab: els.labName.value.trim(),
       program: els.programName.value.trim(),
@@ -1993,6 +2003,16 @@ async function saveRequest() {
     if (supabaseClient) {
       const saved = await saveSupabaseRequest(record, isExisting);
       if (!saved) return;
+      saveWarning = saved.warning;
+      if (saved.keepOpen) {
+        els.requestId.value = saved.record.id;
+        editingRequestUpdatedAt = saved.record.serverUpdatedAt;
+        newRequestId = "";
+        els.dialogTitle.textContent = "Update Request";
+        setRequestSaveMessage(saveWarning, "error");
+        showToast("Request partly saved", saveWarning, "warning");
+        return;
+      }
     } else {
       saveLocalRequest(record, id);
     }
@@ -2000,7 +2020,7 @@ async function saveRequest() {
     suggestedDisplayId = "";
     els.dialog.close();
     setRequestSaveMessage();
-    showToast(isExisting ? "Request updated" : "Request created", `${record.displayId} was saved successfully.`, "success");
+    showToast(isExisting ? "Request updated" : "Request created", saveWarning || `${record.displayId} was saved successfully.`, saveWarning ? "warning" : "success");
     if (!isExisting) resetCurrentPage();
     render();
   } catch (error) {
@@ -2015,12 +2035,12 @@ async function saveRequest() {
 
 async function saveSupabaseRequest(record, isExisting) {
   const payload = toSupabaseRow(record);
-  if (!isExisting && currentUser?.id) {
-    payload.created_by = currentUser.id;
+  if (currentUser?.id) {
+    if (!isExisting) payload.created_by = currentUser.id;
     payload.updated_by = currentUser.id;
   }
 
-  const result = await saveSupabaseRequestDirect(payload, record.id, isExisting);
+  const result = await saveSupabaseRequestDirect(payload, record.id, isExisting, record.serverUpdatedAt);
 
   if (result.error) {
     showToast("Save failed", result.error.message, "warning");
@@ -2028,19 +2048,28 @@ async function saveSupabaseRequest(record, isExisting) {
     return false;
   }
 
-  cacheRequesterDetails(record);
-  upsertRequestInMemory(record);
-  window.setTimeout(syncFromSupabase, 800);
-
-  if (result.warning) {
-    showToast("Request saved", result.warning, "warning");
-    setRequestSaveMessage(result.warning, "error");
+  const savedRecord = result.warning
+    ? { ...record, serverUpdatedAt: result.data.updated_at }
+    : fromSupabaseRow(result.data);
+  upsertRequestInMemory(savedRecord);
+  let warning = result.warning || "";
+  let keepOpen = false;
+  try {
+    cacheRequesterDetails(savedRecord);
+  } catch {
+    keepOpen = Boolean(result.warning);
+    warning = keepOpen
+      ? "The shared request was saved, but its requester details could not be saved to the database or this browser. Copy those entries before closing this form."
+      : "The shared request was saved, but this browser could not store its requester-details copy.";
   }
-
-  return true;
+  window.setTimeout(syncFromSupabase, 800);
+  return { warning, keepOpen, record: savedRecord };
 }
 
-async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
+async function saveSupabaseRequestDirect(payload, requestId, isExisting, expectedUpdatedAt = "") {
+  if (isExisting && !expectedUpdatedAt) {
+    return { error: { message: "Refresh the work queue and reopen this request before saving. Its saved version is unavailable." } };
+  }
   const config = window.GIU_SUPABASE_CONFIG;
   const tokenResult = await getAccessToken(
     "No active Supabase session was found. Please sign in again before saving."
@@ -2055,7 +2084,7 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 8000);
   const url = isExisting
-    ? `${config.url}/rest/v1/giu_requests?id=eq.${encodeURIComponent(requestId)}`
+    ? `${config.url}/rest/v1/giu_requests?id=eq.${encodeURIComponent(requestId)}&updated_at=eq.${encodeURIComponent(expectedUpdatedAt)}`
     : `${config.url}/rest/v1/giu_requests`;
   const method = isExisting ? "PATCH" : "POST";
   const savePayload = async (bodyPayload) => {
@@ -2065,7 +2094,7 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
         apikey: config.anonKey,
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
-        Prefer: "return=minimal",
+        Prefer: "return=representation",
       },
       body: JSON.stringify(bodyPayload),
       signal: controller.signal,
@@ -2078,7 +2107,16 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
       };
     }
 
-    return { error: null };
+    if (!Array.isArray(body) || body.length !== 1 || body[0]?.id !== requestId || !body[0].updated_at) {
+      return {
+        error: {
+          message: isExisting
+            ? "This request changed, was removed, or is no longer editable. Your entries are still in this form. Copy any changes you need, then refresh the queue and reopen the request."
+            : "The database did not confirm the saved request. Check the queue before retrying. Your entries are still in this form.",
+        },
+      };
+    }
+    return { data: body[0], error: null };
   };
 
   try {
@@ -2090,6 +2128,7 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
       const retry = await savePayload(compatiblePayload);
       if (!retry.error) {
         return {
+          data: retry.data,
           error: null,
           warning: "Request saved, but requester details were not synced because the Supabase table is missing those columns.",
         };
@@ -2104,7 +2143,7 @@ async function saveSupabaseRequestDirect(payload, requestId, isExisting) {
     return {
       error: {
         message: error.name === "AbortError"
-          ? "Supabase took too long to save this request. Please retry once, or sign out and sign back in if the app was idle."
+          ? "The save could not be confirmed before the timeout. Check the queue before retrying; the database may have received it."
           : error.message,
       },
     };
@@ -2148,19 +2187,20 @@ function saveLocalRequest(record, id) {
 }
 
 async function deleteRequest() {
-  await deleteRequestById(els.requestId.value);
+  await deleteRequestById(els.requestId.value, editingRequestUpdatedAt);
 }
 
-async function deleteRequestById(id) {
+async function deleteRequestById(id, expectedUpdatedAt) {
   const item = requests.find((request) => request.id === id);
   if (!id || !item) return;
   if (!canDeleteRequests()) return;
 
+  const version = expectedUpdatedAt ?? item.serverUpdatedAt;
   const confirmed = window.confirm(`Delete ${item.displayId} - ${item.project}? This removes the request from the work queue.`);
   if (!confirmed) return;
 
   if (supabaseClient) {
-    const { error } = await deleteSupabaseRequestDirect(id);
+    const { error } = await deleteSupabaseRequestDirect(id, version);
     if (error) {
       showToast("Delete failed", error.message, "warning");
       return;
@@ -2178,7 +2218,10 @@ async function deleteRequestById(id) {
   render();
 }
 
-async function deleteSupabaseRequestDirect(id) {
+async function deleteSupabaseRequestDirect(id, expectedUpdatedAt = "") {
+  if (!expectedUpdatedAt) {
+    return { error: { message: "Refresh the work queue and reopen this request before deleting. Its saved version is unavailable." } };
+  }
   const config = window.GIU_SUPABASE_CONFIG;
   const tokenResult = await getAccessToken(
     "No active Supabase session was found. Please sign in again before deleting."
@@ -2194,12 +2237,12 @@ async function deleteSupabaseRequestDirect(id) {
   const timeoutId = window.setTimeout(() => controller.abort(), 8000);
 
   try {
-    const response = await fetch(`${config.url}/rest/v1/giu_requests?id=eq.${encodeURIComponent(id)}`, {
+    const response = await fetch(`${config.url}/rest/v1/giu_requests?id=eq.${encodeURIComponent(id)}&updated_at=eq.${encodeURIComponent(expectedUpdatedAt)}&select=id`, {
       method: "DELETE",
       headers: {
         apikey: config.anonKey,
         Authorization: `Bearer ${token}`,
-        Prefer: "return=minimal",
+        Prefer: "return=representation",
       },
       signal: controller.signal,
     });
@@ -2211,12 +2254,15 @@ async function deleteSupabaseRequestDirect(id) {
       };
     }
 
+    if (!Array.isArray(body) || body.length !== 1 || body[0]?.id !== id) {
+      return { error: { message: "This request changed, was already removed, or is no longer deletable. Refresh the queue before trying again." } };
+    }
     return { error: null };
   } catch (error) {
     return {
       error: {
         message: error.name === "AbortError"
-          ? "Supabase took too long to delete this request. Please retry once, or sign out and sign back in if the app was idle."
+          ? "The deletion could not be confirmed before the timeout. Refresh the queue to check whether the request is still present."
           : error.message,
       },
     };
@@ -2602,6 +2648,7 @@ function fromSupabaseRow(row) {
     received: row.received,
     target: row.target,
     updated: row.updated,
+    serverUpdatedAt: row.updated_at || "",
     notes: row.notes,
     nextStep: row.next_step,
   };
