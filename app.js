@@ -900,14 +900,13 @@ function showToast(title, message = "", type = "info") {
     </div>
   `;
   els.toastRegion.appendChild(toast);
-  document.body.classList.add("has-toast");
-
-  window.setTimeout(() => {
-    toast.remove();
-    if (!els.toastRegion.children.length) {
-      document.body.classList.remove("has-toast");
-    }
-  }, 1150);
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "toast-dismiss secondary";
+  dismiss.setAttribute("aria-label", "Dismiss notification");
+  dismiss.textContent = "×";
+  dismiss.addEventListener("click", () => toast.remove());
+  toast.appendChild(dismiss);
 }
 
 function setRequestSaveMessage(message = "", type = "info") {
@@ -915,6 +914,9 @@ function setRequestSaveMessage(message = "", type = "info") {
 
   els.requestSaveMessage.textContent = message;
   els.requestSaveMessage.className = `form-message ${type}`;
+  if (message && type === "error" && els.dialog.open) {
+    els.requestSaveMessage.focus();
+  }
 }
 
 function setAuthMessage(message = "", type = "info") {
@@ -946,7 +948,9 @@ function updateAccessControls() {
   els.workspace.classList.toggle("hidden", showSignInLanding);
   els.viewToggle.classList.toggle("hidden", !showViewToggle);
   els.queueView.classList.toggle("active", activeView === "queue");
+  els.queueView.setAttribute("aria-pressed", String(activeView === "queue"));
   els.nrlView.classList.toggle("active", activeView === "nrl");
+  els.nrlView.setAttribute("aria-pressed", String(activeView === "nrl"));
   els.newRequest.classList.toggle("hidden", !canEdit);
   els.resetData.classList.toggle("hidden", Boolean(supabaseClient));
   els.manageUsers.classList.toggle("hidden", currentProfile?.role !== "admin");
@@ -1433,6 +1437,7 @@ async function openNewRequest() {
   els.newRequest.disabled = true;
   try {
     els.dialogTitle.textContent = "New Request";
+    els.saveRequest.textContent = "Create Request";
     els.deleteRequest.classList.add("hidden");
     els.form.reset();
     renderAssigneeOptions();
@@ -1459,6 +1464,7 @@ function openExistingRequest(id) {
   suggestedDisplayId = "";
   setRequestSaveMessage();
   els.dialogTitle.textContent = "Update Request";
+  els.saveRequest.textContent = "Save Update";
   els.deleteRequest.classList.toggle("hidden", !canDeleteRequests());
   els.requestId.value = item.id;
   editingRequestUpdatedAt = item.serverUpdatedAt || "";
@@ -1948,7 +1954,7 @@ async function saveRequest() {
   if (!els.form.reportValidity()) return;
   if (!validateAssigneeSelection({ focus: true })) return;
 
-  const originalText = els.saveRequest.textContent;
+  if (els.saveRequest.disabled) return;
   els.saveRequest.disabled = true;
   els.saveRequest.textContent = "Saving...";
   setRequestSaveMessage("Saving request...", "info");
@@ -2029,7 +2035,7 @@ async function saveRequest() {
     setRequestSaveMessage(message, "error");
   } finally {
     els.saveRequest.disabled = false;
-    els.saveRequest.textContent = originalText;
+    els.saveRequest.textContent = els.requestId.value ? "Save Update" : "Create Request";
   }
 }
 
@@ -2190,19 +2196,32 @@ async function deleteRequest() {
   await deleteRequestById(els.requestId.value, editingRequestUpdatedAt);
 }
 
+function confirmRequestDeletion(item) {
+  const dialog = document.querySelector("#deleteConfirmDialog");
+  if (dialog.open) return Promise.resolve(false);
+  document.querySelector("#deleteConfirmDescription").textContent =
+    `Delete ${item.displayId} — ${item.project}? This removes the request from the work queue.`;
+  dialog.returnValue = "cancel";
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "delete"), { once: true });
+    dialog.showModal();
+  });
+}
+
 async function deleteRequestById(id, expectedUpdatedAt) {
   const item = requests.find((request) => request.id === id);
   if (!id || !item) return;
   if (!canDeleteRequests()) return;
 
   const version = expectedUpdatedAt ?? item.serverUpdatedAt;
-  const confirmed = window.confirm(`Delete ${item.displayId} - ${item.project}? This removes the request from the work queue.`);
+  const confirmed = await confirmRequestDeletion(item);
   if (!confirmed) return;
 
   if (supabaseClient) {
     const { error } = await deleteSupabaseRequestDirect(id, version);
     if (error) {
       showToast("Delete failed", error.message, "warning");
+      if (els.dialog.open) setRequestSaveMessage(error.message, "error");
       return;
     }
     requests = requests.filter((request) => request.id !== id);
@@ -2216,6 +2235,7 @@ async function deleteRequestById(id, expectedUpdatedAt) {
     els.dialog.close();
   }
   render();
+  showToast("Request deleted", `${item.displayId} was removed from the work queue.`, "success");
 }
 
 async function deleteSupabaseRequestDirect(id, expectedUpdatedAt = "") {

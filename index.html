@@ -11,6 +11,8 @@
   <body>
     <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
+    <a class="skip-link" href="#mainContent">Skip to main content</a>
+
     <header class="app-header">
       <div class="brand-lockup">
         <div class="brand-logos" aria-label="RITM and Virology Department logos">
@@ -41,7 +43,7 @@
       </div>
     </header>
 
-    <main>
+    <main id="mainContent" tabindex="-1">
       <section class="signin-landing hidden" id="signInLanding" aria-label="Sign in">
         <div class="signin-panel">
           <div class="signin-copy">
@@ -75,7 +77,7 @@
         </button>
       </section>
 
-      <section class="workspace" id="workspace">
+      <section class="workspace" id="workspace" tabindex="-1" aria-label="Work queue">
         <aside class="sidebar" aria-label="Filters">
           <div class="sidebar-note" id="adminNote">
             <strong>GIU reminder</strong>
@@ -140,14 +142,14 @@
       </footer>
     </main>
 
-    <dialog id="requestDetailDialog">
+    <dialog id="requestDetailDialog" aria-labelledby="detailTitle">
       <div class="detail-dialog">
         <div class="dialog-header">
           <div>
             <h2 id="detailTitle">Request Summary</h2>
             <p class="dialog-subtitle">Full request context and latest GIU status.</p>
           </div>
-          <button class="icon-button" id="closeDetailDialog" type="button" title="Close">x</button>
+          <button class="icon-button" id="closeDetailDialog" type="button" title="Close" aria-label="Close">×</button>
         </div>
 
         <div id="detailBody" class="detail-body"></div>
@@ -160,11 +162,11 @@
       </div>
     </dialog>
 
-    <dialog id="requestDialog">
+    <dialog id="requestDialog" aria-labelledby="dialogTitle">
       <form method="dialog" id="requestForm">
         <div class="dialog-header">
           <h2 id="dialogTitle">New Request</h2>
-          <button class="icon-button" id="closeRequestDialog" type="button" title="Close">x</button>
+          <button class="icon-button" id="closeRequestDialog" type="button" title="Close" aria-label="Close">×</button>
         </div>
 
         <input type="hidden" id="requestId" />
@@ -250,25 +252,36 @@
           <textarea id="nextStepText" rows="3" placeholder="What happens next?"></textarea>
         </label>
 
-        <p id="requestSaveMessage" class="form-message" aria-live="polite"></p>
+        <p id="requestSaveMessage" class="form-message" aria-live="polite" aria-atomic="true" tabindex="-1"></p>
 
         <div class="dialog-actions">
           <button class="danger secondary" id="deleteRequest" type="button">Delete</button>
           <span></span>
           <button class="secondary" id="cancelRequest" type="button">Cancel</button>
-          <button id="saveRequest" value="default" type="button">Save Update</button>
+          <button id="saveRequest" value="default" type="button">Create Request</button>
         </div>
       </form>
     </dialog>
 
-    <dialog id="userDialog">
+    <dialog id="deleteConfirmDialog" aria-labelledby="deleteConfirmTitle" aria-describedby="deleteConfirmDescription">
+      <form method="dialog">
+        <h2 id="deleteConfirmTitle">Delete request?</h2>
+        <p id="deleteConfirmDescription" class="dialog-subtitle"></p>
+        <div class="confirmation-actions">
+          <button class="secondary" value="cancel" autofocus>Keep Request</button>
+          <button class="delete-confirm" value="delete">Delete Request</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="userDialog" aria-labelledby="usersTitle">
       <form method="dialog" id="userForm">
         <div class="dialog-header">
           <div>
-            <h2>Manage Users</h2>
+            <h2 id="usersTitle">Manage Users</h2>
             <p class="dialog-subtitle">Approve pending accounts and assign each user to a role and laboratory.</p>
           </div>
-          <button class="icon-button" id="closeUserDialog" type="button" title="Close">x</button>
+          <button class="icon-button" id="closeUserDialog" type="button" title="Close" aria-label="Close">×</button>
         </div>
 
         <div class="user-tools">
@@ -288,11 +301,11 @@
       </form>
     </dialog>
 
-    <dialog id="authDialog">
+    <dialog id="authDialog" aria-labelledby="authTitle">
       <form method="dialog" id="authForm">
         <div class="dialog-header">
           <h2 id="authTitle">GIU Tracker Sign In</h2>
-          <button class="icon-button" id="closeAuthDialog" type="button" title="Close">x</button>
+          <button class="icon-button" id="closeAuthDialog" type="button" title="Close" aria-label="Close">×</button>
         </div>
 
         <div class="auth-mode-tabs" role="tablist" aria-label="Authentication mode">
@@ -335,10 +348,10 @@
       </form>
     </dialog>
 
-    <dialog id="passwordResetDialog">
+    <dialog id="passwordResetDialog" aria-labelledby="passwordResetTitle">
       <div class="reset-confirmation">
         <div class="reset-confirmation-icon" aria-hidden="true">✓</div>
-        <h2>Password reset email sent</h2>
+        <h2 id="passwordResetTitle">Password reset email sent</h2>
         <p>Please check your inbox and follow the link to reset your password.</p>
         <button id="closePasswordResetDialog" type="button">OK</button>
       </div>
@@ -349,8 +362,3 @@
     <script src="app.js"></script>
   </body>
 </html>
-
-
-
-
-

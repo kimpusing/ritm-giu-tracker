@@ -60,6 +60,7 @@ function setup(fetchImplementation) {
     'validateAssigneeSelection = () => true;',
     'selectedAssignees = () => ["GIU - Iona"];',
     'render = () => {};',
+    'confirmRequestDeletion = async () => true;',
     'showToast = (title, message, type) => notices.push({title, message, type});',
     'setRequestSaveMessage = (message = "", type) => { els.requestSaveMessage.textContent = message; };',
   ].join('\n'), context);
@@ -215,4 +216,37 @@ test('requester fields stay in the editor when both schema and browser storage r
   assert.equal(h.evaluate('editingRequestUpdatedAt'), changedVersion);
   assert.equal(h.notices.at(-1).title, 'Request partly saved');
   assert.equal(h.notices.some(item=>item.type==='success'), false);
+});
+
+test('cancelled deletion sends no request and retains the row', async () => {
+  const h = setup(() => { throw new Error('Unexpected deletion'); });
+  h.evaluate('confirmRequestDeletion = async () => false;');
+  await h.context.deleteRequestById(row.id);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.evaluate('requests.length'), 1);
+});
+
+test('deletion keeps the version captured before confirmation while the queue refreshes', async () => {
+  const h = setup(() => response([]));
+  h.evaluate('confirmRequestDeletion = () => new Promise(resolve => { finishConfirmation = resolve; });');
+  const pending = h.context.deleteRequestById(row.id);
+  assert.equal(h.calls.length, 0);
+  h.evaluate('requests[0].serverUpdatedAt = "2026-11-11T09:00:00+00:00"; finishConfirmation(true);');
+  await pending;
+  assert.equal(h.calls[0].url.searchParams.get('updated_at'), 'eq.' + originalVersion);
+  assert.equal(h.evaluate('requests.length'), 1);
+});
+
+test('new requests keep their creation label after failure and ignore repeated saves in flight', async () => {
+  const h = setup(() => response([]));
+  h.evaluate('reserveNextDisplayId = async () => ({data:"GIU-2026-002"});');
+  await h.context.openNewRequest();
+  assert.equal(h.element('#saveRequest').textContent, 'Create Request');
+  const pending = h.context.saveRequest();
+  assert.equal(h.element('#saveRequest').textContent, 'Saving...');
+  await h.context.saveRequest();
+  await pending;
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.element('#saveRequest').textContent, 'Create Request');
+  assert.equal(h.element('#saveRequest').disabled, false);
 });
