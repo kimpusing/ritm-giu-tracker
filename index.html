@@ -26,20 +26,28 @@
         </div>
       </div>
       <div class="header-actions">
-        <span class="sync-badge" id="syncBadge">Demo mode</span>
-        <button class="secondary" id="authButton" type="button" title="Sign in with Supabase">
-          Sign in
-        </button>
         <button class="secondary" id="resetData" type="button" title="Restore sample records">
           Reset
-        </button>
-        <button class="secondary" id="manageUsers" type="button" title="Approve and update users">
-          Manage Users
         </button>
         <button id="newRequest" type="button" title="Add a new request">
           <span aria-hidden="true">+</span>
           New Request
         </button>
+        <div class="header-account" role="group" aria-label="Account">
+          <div class="account-identity">
+            <span class="account-initials hidden" id="accountInitials" aria-hidden="true"></span>
+            <div class="account-copy">
+              <span class="account-name hidden" id="accountName"></span>
+              <span class="sync-badge" id="syncBadge">Demo mode</span>
+            </div>
+          </div>
+          <div class="account-actions">
+            <button class="secondary" id="manageUsers" type="button" title="Approve and update users">
+              Manage users
+            </button>
+            <button class="secondary" id="authButton" type="button">Sign in</button>
+          </div>
+        </div>
       </div>
     </header>
 

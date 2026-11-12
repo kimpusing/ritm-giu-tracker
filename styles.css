@@ -226,18 +226,12 @@ h2 {
   box-shadow: 0 8px 18px rgba(23, 73, 90, 0.16);
 }
 
-#authButton.is-signed-in {
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--ink);
-  border: 1px solid #cfe0e6;
-  box-shadow: 0 8px 18px rgba(28, 51, 61, 0.06);
-}
-
+#authButton.is-signed-in,
 #manageUsers {
-  background: rgba(255, 255, 255, 0.56);
-  color: #173f4f;
-  border: 1px solid #cfe0e6;
-  box-shadow: 0 8px 18px rgba(28, 51, 61, 0.05);
+  background: var(--surface);
+  color: var(--deep);
+  border: 1px solid var(--line);
+  font-weight: 600;
 }
 
 #resetData {
@@ -271,13 +265,94 @@ h2 {
   box-shadow: 0 0 0 3px rgba(11, 117, 111, 0.1);
 }
 
-.sync-badge:has(+ #authButton.is-signed-out) {
-  min-height: 34px;
-  padding: 0 13px;
-  font-size: 0.78rem;
-  background: rgba(255, 255, 255, 0.68);
-  color: #315d68;
-  box-shadow: 0 8px 18px rgba(28, 51, 61, 0.06);
+.header-account,
+.account-identity,
+.account-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.header-account {
+  flex-wrap: wrap;
+}
+
+.account-actions {
+  flex-wrap: wrap;
+}
+
+.header-account:has(.is-signed-in) {
+  margin-inline-start: 4px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--line);
+}
+
+.account-initials {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  border: 1px solid #cae0e4;
+  border-radius: 10px;
+  background: #e8f4f5;
+  color: var(--deep);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.account-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.account-name {
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.header-account:has(.is-signed-in) .account-identity {
+  max-width: 210px;
+  padding-inline-end: 4px;
+}
+
+.header-account:has(.is-signed-in) .sync-badge {
+  display: block;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  line-height: 1.35;
+  font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.header-account:has(.is-signed-in) .sync-badge::before {
+  content: none;
+}
+
+@media (max-width: 640px) {
+  .header-account {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+
+  .header-account:has(.is-signed-in) {
+    margin: 0;
+    padding: 10px 0 0;
+    border-inline-start: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .header-account:has(.is-signed-in) .account-identity {
+    max-width: 100%;
+  }
 }
 
 main {

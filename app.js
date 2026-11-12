@@ -256,6 +256,8 @@ const els = {
   newRequest: document.querySelector("#newRequest"),
   resetData: document.querySelector("#resetData"),
   syncBadge: document.querySelector("#syncBadge"),
+  accountName: document.querySelector("#accountName"),
+  accountInitials: document.querySelector("#accountInitials"),
   authButton: document.querySelector("#authButton"),
   manageUsers: document.querySelector("#manageUsers"),
   adminNote: document.querySelector("#adminNote"),
@@ -919,7 +921,8 @@ function normalizeRequestLabels(record) {
 }
 
 function setMode(label, title = "") {
-  els.syncBadge.textContent = label;
+  const accountRoles = { "ADMIN view": "GIU administrator", "GIU view": "GIU staff" };
+  els.syncBadge.textContent = accountRoles[label] ?? label;
   els.syncBadge.title = title;
 }
 
@@ -990,6 +993,22 @@ function canDeleteRequests() {
   return !supabaseClient || currentProfile?.role === "admin";
 }
 
+function updateAccountIdentity() {
+  const email = currentUser?.email ?? "";
+  const profileName = currentProfile?.full_name?.trim();
+  const name = currentUser ? profileName || email || "GIU account" : "";
+  const initials = (profileName || email.split("@")[0]).split(/[\s._-]+/u)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => Array.from(part)[0].toUpperCase())
+    .join("");
+
+  els.accountName.textContent = name;
+  els.accountName.classList.toggle("hidden", !currentUser);
+  els.accountInitials.textContent = currentUser ? initials || "GIU" : "";
+  els.accountInitials.classList.toggle("hidden", !currentUser);
+}
+
 function updateAccessControls() {
   const canEdit = canEditRequests();
   const showViewToggle = canEdit;
@@ -1013,6 +1032,7 @@ function updateAccessControls() {
   els.manageUsers.classList.toggle("hidden", currentProfile?.role !== "admin");
   els.adminNote.classList.toggle("hidden", currentProfile?.role !== "admin");
   els.patientInfoReminder?.classList.toggle("hidden", !canEdit);
+  updateAccountIdentity();
   els.authButton.textContent = currentUser ? "Sign out" : "Sign in";
   els.authButton.classList.toggle("is-signed-in", Boolean(currentUser));
   els.authButton.classList.toggle("is-signed-out", !currentUser);
