@@ -49,7 +49,7 @@
           <div class="signin-copy">
             <h2>Sign in to continue</h2>
             <p>
-              Access is limited to approved GIU and NRL users. Use your registered account to view request statuses, summaries, and updates.
+              Use your registered account to view GIU request updates. Access is limited to approved users.
             </p>
           </div>
           <div class="signin-panel-actions">
@@ -57,6 +57,7 @@
             <button class="secondary" id="landingCreateAccount" type="button">Create account</button>
           </div>
         </div>
+        <p id="landingSignInMessage" class="signin-notice" role="status"></p>
       </section>
 
       <section class="summary-grid" id="summaryGrid" aria-label="Status summary">
@@ -302,59 +303,63 @@
     </dialog>
 
     <dialog id="authDialog" aria-labelledby="authTitle">
-      <form method="dialog" id="authForm">
+      <form method="dialog" id="authForm" novalidate>
         <div class="dialog-header">
-          <h2 id="authTitle">GIU Tracker Sign In</h2>
+          <h2 id="authTitle" tabindex="-1">GIU Tracker Sign In</h2>
           <button class="icon-button" id="closeAuthDialog" type="button" title="Close" aria-label="Close">×</button>
-        </div>
-
-        <div class="auth-mode-tabs" role="tablist" aria-label="Authentication mode">
-          <button class="active" id="authModeSignIn" type="button">Sign In</button>
-          <button id="authModeCreate" type="button">Create Account</button>
         </div>
 
         <p class="auth-copy" id="authCopy">Sign in with your registered email and password.</p>
 
         <label class="wide-label hidden" id="authNameLabel">
-          Full Name <span class="label-hint">(new accounts only)</span>
+          Full name
           <input id="authName" type="text" placeholder="Juan Dela Cruz" autocomplete="name" />
         </label>
 
         <label class="wide-label">
           Email Address
-          <input id="authEmail" type="email" placeholder="name@example.gov.ph" />
+          <input id="authEmail" name="email" type="email" autocomplete="username" autocapitalize="none" placeholder="name@example.gov.ph" />
         </label>
 
-        <label class="wide-label">
-          Password
-          <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" />
-        </label>
+        <div class="wide-label" id="authPasswordField">
+          <label for="authPassword" id="authPasswordLabel">Password</label>
+          <div class="auth-password-field">
+            <input id="authPassword" name="password" type="password" autocomplete="current-password" />
+            <button class="secondary" id="authPasswordToggle" type="button" aria-controls="authPassword">Show password</button>
+          </div>
+        </div>
 
         <label class="wide-label hidden" id="authConfirmPasswordLabel">
           Confirm Password
           <input id="authConfirmPassword" type="password" placeholder="Confirm password" autocomplete="new-password" />
         </label>
 
-        <button class="link-button" id="forgotPassword" type="button">Forgot password?</button>
+        <p class="auth-copy hidden" id="authPasswordHint">Use at least 8 characters.</p>
 
-        <p class="form-message auth-alert" id="authMessage" role="alert" aria-live="assertive"></p>
+        <div class="auth-links" id="authSignInLinks">
+          <button class="link-button" id="forgotPassword" type="button">Forgot password?</button>
+          <button class="link-button" id="authModeCreate" type="button">Create account</button>
+        </div>
+
+        <p class="form-message auth-alert" id="authMessage" role="alert" aria-live="assertive" tabindex="-1"></p>
 
         <div class="dialog-actions compact">
           <button class="secondary" id="cancelAuth" type="button">Cancel</button>
-          <button id="passwordSignIn" value="default" type="button">Sign In</button>
-          <button class="hidden" id="createAccount" value="default" type="button">Create Account</button>
-          <button class="hidden" id="saveNewPassword" value="default" type="button">Save New Password</button>
+          <button id="authSubmit" type="submit">Sign in</button>
         </div>
       </form>
-    </dialog>
-
-    <dialog id="passwordResetDialog" aria-labelledby="passwordResetTitle">
-      <div class="reset-confirmation">
-        <div class="reset-confirmation-icon" aria-hidden="true">✓</div>
-        <h2 id="passwordResetTitle">Password reset email sent</h2>
-        <p>Please check your inbox and follow the link to reset your password.</p>
-        <button id="closePasswordResetDialog" type="button">OK</button>
-      </div>
+      <section class="sign-in-loader hidden" id="signInLoader">
+        <div class="sign-in-loader-card">
+          <div class="sign-in-loader-brand" aria-hidden="true">
+            <img src="assets/ritm-logo-clean.png" alt="" />
+            <img src="assets/virology-logo-mark.png" alt="" />
+          </div>
+          <p class="eyebrow">GIU NRL Status Tracker</p>
+          <h2 id="signInLoaderTitle" tabindex="-1">Getting your tracker ready</h2>
+          <div class="sign-in-loader-track" aria-hidden="true"><span></span></div>
+          <p id="signInProgress" role="status"></p>
+        </div>
+      </section>
     </dialog>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

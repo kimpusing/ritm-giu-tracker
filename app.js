@@ -218,6 +218,9 @@ let editingRequestUpdatedAt = "";
 let newRequestId = "";
 let profileNoticeShownForUser = "";
 let authMode = "sign-in";
+let authActionPending = false;
+let signInPending = false;
+let signOutNoticeTimer;
 let passwordRecoveryPending = false;
 
 const els = {
@@ -226,6 +229,7 @@ const els = {
   doneCount: document.querySelector("#doneCount"),
   signInLanding: document.querySelector("#signInLanding"),
   landingSignIn: document.querySelector("#landingSignIn"),
+  landingSignInMessage: document.querySelector("#landingSignInMessage"),
   landingCreateAccount: document.querySelector("#landingCreateAccount"),
   summaryGrid: document.querySelector("#summaryGrid"),
   metricButtons: document.querySelectorAll("[data-metric-filter]"),
@@ -293,26 +297,60 @@ const els = {
   cancelUsers: document.querySelector("#cancelUsers"),
   authDialog: document.querySelector("#authDialog"),
   authForm: document.querySelector("#authForm"),
+  authSubmit: document.querySelector("#authSubmit"),
+  authPasswordField: document.querySelector("#authPasswordField"),
+  authPasswordLabel: document.querySelector("#authPasswordLabel"),
+  authPasswordHint: document.querySelector("#authPasswordHint"),
+  authSignInLinks: document.querySelector("#authSignInLinks"),
+  signInLoader: document.querySelector("#signInLoader"),
+  signInLoaderTitle: document.querySelector("#signInLoaderTitle"),
+  signInProgress: document.querySelector("#signInProgress"),
   closeAuthDialog: document.querySelector("#closeAuthDialog"),
   cancelAuth: document.querySelector("#cancelAuth"),
   authTitle: document.querySelector("#authTitle"),
   authCopy: document.querySelector("#authCopy"),
-  authModeTabs: document.querySelector(".auth-mode-tabs"),
-  authModeSignIn: document.querySelector("#authModeSignIn"),
   authModeCreate: document.querySelector("#authModeCreate"),
   authNameLabel: document.querySelector("#authNameLabel"),
   authName: document.querySelector("#authName"),
   authEmail: document.querySelector("#authEmail"),
   authPassword: document.querySelector("#authPassword"),
+  authPasswordToggle: document.querySelector("#authPasswordToggle"),
   authConfirmPasswordLabel: document.querySelector("#authConfirmPasswordLabel"),
   authConfirmPassword: document.querySelector("#authConfirmPassword"),
   authMessage: document.querySelector("#authMessage"),
   forgotPassword: document.querySelector("#forgotPassword"),
-  passwordResetDialog: document.querySelector("#passwordResetDialog"),
-  closePasswordResetDialog: document.querySelector("#closePasswordResetDialog"),
-  createAccount: document.querySelector("#createAccount"),
-  passwordSignIn: document.querySelector("#passwordSignIn"),
-  saveNewPassword: document.querySelector("#saveNewPassword"),
+};
+
+const authViews = {
+  "sign-in": {
+    title: "GIU Tracker Sign In",
+    copy: "Use your registered email and password.",
+    action: "Sign in",
+    submit: passwordSignIn,
+  },
+  create: {
+    title: "Create account",
+    copy: "Confirm your email if prompted, then wait for a GIU administrator to approve your access.",
+    action: "Create account",
+    pending: "Creating your account…",
+    submit: createAccount,
+  },
+  recover: {
+    title: "Reset your password",
+    copy: "Enter the email address registered to your account.",
+    action: "Send reset link",
+    pending: "Sending reset link…",
+    submit: resetPassword,
+  },
+  reset: {
+    title: "Set a new password",
+    copy: "Choose a new password for your GIU Tracker account.",
+    action: "Save new password",
+    pending: "Saving your password…",
+    submit: saveNewPassword,
+  },
+  "check-email": { title: "Check your email" },
+  "pending-approval": { title: "Awaiting GIU approval" },
 };
 
 initialize();
@@ -382,18 +420,30 @@ function bindEvents() {
   els.cancelUsers.addEventListener("click", closeUserManager);
   els.authButton.addEventListener("click", handleAuthButton);
   els.landingSignIn.addEventListener("click", () => openAuthDialog("sign-in"));
+  els.authPasswordToggle.addEventListener("click", () => {
+    setAuthPasswordVisible(els.authPassword.type === "password");
+  });
   els.landingCreateAccount.addEventListener("click", () => openAuthDialog("create"));
   els.authForm.addEventListener("submit", handleAuthSubmit);
-  els.authForm.addEventListener("keydown", handleAuthEnterKey);
-  els.authModeSignIn.addEventListener("click", () => setAuthMode("sign-in"));
+  els.authDialog.addEventListener("cancel", (event) => {
+    if (authActionPending) event.preventDefault();
+  });
   els.authModeCreate.addEventListener("click", () => setAuthMode("create"));
-  els.createAccount.addEventListener("click", createAccount);
-  els.passwordSignIn.addEventListener("click", passwordSignIn);
-  els.saveNewPassword.addEventListener("click", saveNewPassword);
-  els.forgotPassword.addEventListener("click", resetPassword);
-  els.closePasswordResetDialog.addEventListener("click", () => els.passwordResetDialog.close());
+  els.forgotPassword.addEventListener("click", () => setAuthMode("recover"));
   els.closeAuthDialog.addEventListener("click", closeAuthDialog);
-  els.cancelAuth.addEventListener("click", closeAuthDialog);
+  els.cancelAuth.addEventListener("click", () => {
+    if (["create", "recover", "check-email"].includes(authMode)) {
+      setAuthMode("sign-in");
+    } else {
+      closeAuthDialog();
+    }
+  });
+  els.authDialog.addEventListener("close", () => {
+    if (!els.authDialog.open) {
+      els.authForm.reset();
+      setAuthPasswordVisible(false);
+    }
+  });
   els.stageName.addEventListener("input", updateStagePreview);
   els.assigneeOptions.addEventListener("change", () => {
     if (selectedAssignees().length) clearAssigneeValidation();
@@ -453,6 +503,8 @@ async function initializeDataSource() {
 
 function listenForAuthChanges() {
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    // The password submit handler loads the workspace after the auth call settles.
+    if (signInPending && event === "SIGNED_IN") return;
     currentSession = session || null;
     cachedAccessToken = session?.access_token || "";
     currentUser = session?.user || null;
@@ -496,7 +548,7 @@ function setupPassiveSync() {
 }
 
 async function syncFromSupabase() {
-  if (!supabaseClient || isSyncing) return;
+  if (!supabaseClient || isSyncing || signInPending) return;
   if (!currentUser || !currentProfile || currentProfile.role === "pending") return;
 
   isSyncing = true;
@@ -693,7 +745,12 @@ async function finishAuthRedirect() {
 
   const { error } = await supabaseClient.auth.exchangeCodeForSession(code);
   if (error) {
-    setMode("Sign-in error", error.message);
+    if (isRecoveryRedirect) {
+      passwordRecoveryPending = false;
+      handleAuthRedirectError(error.message);
+    } else {
+      setMode("Sign-in error", error.message);
+    }
     return;
   }
 
@@ -707,9 +764,8 @@ function handleAuthRedirectError(errorDescription = "", errorCode = "") {
   const message = friendlyAuthError(errorDescription, "reset");
   setMode("Password reset issue", message);
   window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
-  openAuthDialog("sign-in");
+  openAuthDialog("recover");
   setAuthMessage(message, "error");
-  showToast("Reset link issue", message, "warning");
 }
 
 function passwordResetRedirectUrl() {
@@ -943,6 +999,7 @@ function updateAccessControls() {
     activeView = "queue";
   }
 
+  document.body.classList.toggle("show-signin", showSignInLanding);
   els.signInLanding.classList.toggle("hidden", !showSignInLanding);
   els.summaryGrid.classList.toggle("hidden", showSignInLanding);
   els.workspace.classList.toggle("hidden", showSignInLanding);
@@ -2319,7 +2376,12 @@ async function handleAuthButton() {
     if (error) {
       showToast("Sign out issue", error.message, "warning");
     } else {
-      showToast("Signed out", "Your session has ended.", "signed-out");
+      els.toastRegion.replaceChildren();
+      window.clearTimeout(signOutNoticeTimer);
+      els.landingSignInMessage.textContent = "You signed out.";
+      signOutNoticeTimer = window.setTimeout(() => {
+        els.landingSignInMessage.textContent = "";
+      }, 5000);
     }
     clearSignedInState();
     return;
@@ -2336,6 +2398,7 @@ function openAuthDialog(mode = "sign-in") {
   setAuthMessage();
   setAuthMode(mode);
   els.authDialog.showModal();
+  focusAuthView();
 }
 
 function closeAuthDialog() {
@@ -2347,99 +2410,147 @@ function closeAuthDialog() {
   els.authDialog.close();
 }
 
-function setAuthMode(mode) {
+function setAuthMode(mode, copy) {
+  const view = authViews[mode];
   authMode = mode;
-  const isCreate = mode === "create";
-  const isReset = mode === "reset";
-  els.authTitle.textContent = isReset
-    ? "Set New Password"
-    : isCreate
-      ? "Create GIU Tracker Account"
-      : "GIU Tracker Sign In";
-  els.authCopy.textContent = isReset
-    ? "Create a new password for your GIU Tracker account."
-    : isCreate
-      ? "Create an account, then wait for GIU approval before request records are shown."
-      : "Sign in with your registered email and password.";
-  els.authModeSignIn.classList.toggle("active", !isCreate && !isReset);
-  els.authModeCreate.classList.toggle("active", isCreate);
-  els.authModeTabs.classList.toggle("hidden", isReset);
-  els.authNameLabel.classList.toggle("hidden", !isCreate);
-  els.authEmail.closest("label").classList.toggle("hidden", isReset);
-  els.authConfirmPasswordLabel.classList.toggle("hidden", !isReset);
-  els.passwordSignIn.classList.toggle("hidden", isCreate || isReset);
-  els.forgotPassword.classList.toggle("hidden", isCreate || isReset);
-  els.createAccount.classList.toggle("hidden", !isCreate);
-  els.saveNewPassword.classList.toggle("hidden", !isReset);
-  els.authPassword.autocomplete = isCreate || isReset ? "new-password" : "current-password";
-  els.authPassword.placeholder = isReset ? "New password" : "Password";
-  els.cancelAuth.textContent = isReset ? "Close" : "Cancel";
+  const usesPassword = ["sign-in", "create", "reset"].includes(mode);
+  const needsNewPassword = mode === "create" || mode === "reset";
+  const usesEmail = ["sign-in", "create", "recover"].includes(mode);
+  els.authPassword.value = "";
+  els.authConfirmPassword.value = "";
+  setAuthPasswordVisible(false);
+  els.authTitle.textContent = view.title;
+  els.authCopy.textContent = copy ?? view.copy;
+  els.authNameLabel.classList.toggle("hidden", mode !== "create");
+  els.authEmail.closest("label").classList.toggle("hidden", !usesEmail);
+  els.authPasswordField.classList.toggle("hidden", !usesPassword);
+  els.authPasswordLabel.textContent = mode === "reset" ? "New password" : "Password";
+  els.authPasswordHint.classList.toggle("hidden", !needsNewPassword);
+  if (needsNewPassword) els.authPassword.setAttribute("aria-describedby", "authPasswordHint");
+  else els.authPassword.removeAttribute("aria-describedby");
+  els.authConfirmPasswordLabel.classList.toggle("hidden", mode !== "reset");
+  els.authSignInLinks.classList.toggle("hidden", mode !== "sign-in");
+  els.authPassword.autocomplete = needsNewPassword ? "new-password" : "current-password";
+  els.authEmail.autocomplete = mode === "sign-in" ? "username" : "email";
+  els.authSubmit.classList.toggle("hidden", !view.submit);
+  els.authSubmit.textContent = view.action ?? "";
+  els.cancelAuth.textContent = mode === "sign-in" ? "Cancel"
+    : mode === "reset" || mode === "pending-approval" ? "Close" : "Back to sign in";
   setAuthMessage();
+  if (els.authDialog.open) focusAuthView();
 }
 
-function isCreateAuthMode() {
-  return authMode === "create";
+function focusAuthView() {
+  const target = authMode === "create" ? els.authName
+    : authMode === "reset" ? els.authPassword
+    : authViews[authMode].submit ? els.authEmail : els.authTitle;
+  target.focus();
 }
 
-function submitActiveAuthMode() {
-  const button = authMode === "create"
-    ? els.createAccount
-    : authMode === "reset"
-      ? els.saveNewPassword
-      : els.passwordSignIn;
-  if (button.disabled) return;
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const view = authViews[authMode];
+  if (!view.submit || authActionPending || !supabaseClient) return;
+  if (["sign-in", "create", "recover"].includes(authMode)
+      && (!els.authEmail.value.trim() || !els.authEmail.validity.valid)) {
+    setAuthMessage("Enter a valid email address.", "error");
+    els.authEmail.focus();
+    return;
+  }
 
-  if (authMode === "create") {
-    createAccount();
-  } else if (authMode === "reset") {
-    saveNewPassword();
-  } else {
-    passwordSignIn();
+  authActionPending = true;
+  const controls = [els.authSubmit, els.cancelAuth, els.closeAuthDialog, els.forgotPassword, els.authModeCreate];
+  controls.forEach((control) => { control.disabled = true; });
+  if (view.pending) setAuthMessage(view.pending);
+  try {
+    await view.submit();
+  } catch {
+    setAuthMessage("We couldn’t complete that request. Please try again.", "error");
+  } finally {
+    authActionPending = false;
+    controls.forEach((control) => { control.disabled = false; });
   }
 }
 
-function handleAuthSubmit(event) {
-  event.preventDefault();
-  submitActiveAuthMode();
-}
-
-function handleAuthEnterKey(event) {
-  if (event.key !== "Enter") return;
-  if (!event.target.matches("input")) return;
-
-  event.preventDefault();
-  submitActiveAuthMode();
+function setAuthPasswordVisible(visible) {
+  els.authPassword.type = visible ? "text" : "password";
+  els.authPasswordToggle.textContent = visible ? "Hide password" : "Show password";
 }
 
 async function passwordSignIn() {
-  const email = els.authEmail.value.trim();
-  const password = els.authPassword.value;
-
+  const { authEmail: emailInput, authPassword: passwordInput } = els;
+  const setMessage = setAuthMessage;
+  if (signInPending || !supabaseClient) return;
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
   if (!email || !password) {
-    setAuthMessage("Enter both email and password.", "error");
-    showToast("Sign in incomplete", "Enter both email and password.", "warning");
+    setMessage("Enter both email and password.", "error");
     return;
   }
 
-  setAuthMessage("Signing in...", "info");
-  els.passwordSignIn.disabled = true;
-  const { error } = await withTimeout(
-    supabaseClient.auth.signInWithPassword({ email, password }),
-    8000,
-    "Supabase took too long to sign in. Please retry once."
-  );
-  els.passwordSignIn.disabled = false;
+  signInPending = true;
+  setMessage();
+  setSignInLoading(true);
+  const slowTimer = window.setTimeout(() => {
+    els.signInProgress.textContent = "This is taking longer than usual. Please wait.";
+  }, 12000);
+  let completed = false;
+  try {
+    const timeoutMessage = "Sign-in took too long. Please try again.";
+    const { data, error } = await withTimeout(
+      supabaseClient.auth.signInWithPassword({ email, password }),
+      8000,
+      timeoutMessage
+    );
+    if (error) {
+      const message = error.message === timeoutMessage
+        ? timeoutMessage
+        : error.status === 429
+          ? "Too many attempts. Wait a moment and try again."
+          : !error.status || error.status >= 500
+            ? "Unable to sign in right now. Check your connection and try again."
+            : "Check your email and password, then try again. If you just registered, confirm your email first.";
+      setMessage(message, "error");
+      return;
+    }
+    const session = data?.session;
+    if (!session?.user) {
+      setMessage("Unable to finish signing in. Please try again.", "error");
+      return;
+    }
 
-  if (error) {
-    const message = friendlyAuthError(error.message, "sign-in");
-    setAuthMessage(message, "error");
-    showToast("Sign in failed", message, "warning");
-    return;
+    currentSession = session;
+    cachedAccessToken = session.access_token;
+    currentUser = session.user;
+    passwordInput.value = "";
+    setAuthPasswordVisible(false);
+    els.signInProgress.textContent = "Loading your workspace…";
+    await loadProfile();
+    await loadSupabaseRequests();
+    render();
+    completed = true;
+  } catch {
+    setMessage("Unable to finish signing in. Please try again.", "error");
+  } finally {
+    window.clearTimeout(slowTimer);
+    signInPending = false;
+    if (completed) closeAuthDialog();
+    setSignInLoading(false);
+    if (completed) {
+      document.querySelector("#mainContent").focus();
+    } else {
+      els.authMessage.focus();
+    }
   }
+}
 
-  await ensurePendingProfile();
-  els.authDialog.close();
-  showToast("Signed in", "Your GIU tracker session is active.", "signed-in");
+function setSignInLoading(loading) {
+  els.authDialog.classList.toggle("is-signing-in", loading);
+  els.authDialog.setAttribute("aria-labelledby", loading ? "signInLoaderTitle" : "authTitle");
+  els.authForm.classList.toggle("hidden", loading);
+  els.signInLoader.classList.toggle("hidden", !loading);
+  els.signInProgress.textContent = loading ? "Signing in…" : "";
+  if (loading) els.signInLoaderTitle.focus();
 }
 
 async function createAccount() {
@@ -2449,24 +2560,19 @@ async function createAccount() {
 
   if (!fullName) {
     setAuthMessage("Enter your full name so the GIU admin can identify your account.", "error");
-    showToast("Name needed", "Enter your full name so GIU can approve the correct account.", "warning");
     return;
   }
 
   if (!email) {
     setAuthMessage("Enter an email address first.", "error");
-    showToast("Email needed", "Enter an email address first.", "warning");
     return;
   }
 
   if (!password || password.length < 8) {
     setAuthMessage("Use a password with at least 8 characters.", "error");
-    showToast("Password too short", "Use a password with at least 8 characters.", "warning");
     return;
   }
 
-  setAuthMessage("Creating account...", "info");
-  els.createAccount.disabled = true;
   const { data, error } = await withTimeout(
     supabaseClient.auth.signUp({
       email,
@@ -2479,56 +2585,41 @@ async function createAccount() {
     8000,
     "Supabase took too long to create this account. Please retry once."
   );
-  els.createAccount.disabled = false;
 
   if (error) {
-    const message = friendlyAuthError(error.message, "create");
+    const message = /already registered|already exists/i.test(error.message)
+      ? "If you already have an account, sign in or request a password reset."
+      : friendlyAuthError(error.message, "create");
     setAuthMessage(message, "error");
-    showToast("Account creation failed", message, "warning");
     return;
   }
 
-  if (data.session) {
+  if (data?.session) {
     await ensurePendingProfile();
-    els.authDialog.close();
-    showToast("Account created", "Your account is pending GIU approval.", "success");
+    setAuthMode("pending-approval", "Your account has been created. A GIU administrator will review your access.");
   } else {
-    setAuthMessage("Account created. Check your email to confirm, then sign in.", "success");
-    showToast("Account created", "Check your email to confirm, then sign in.", "success");
+    setAuthMode("check-email", "If a confirmation email arrives, follow the link and sign in. A GIU administrator reviews new accounts before granting access.");
   }
 }
 
 async function resetPassword() {
-  const email = els.authEmail.value.trim();
-
-  if (!email) {
-    setAuthMessage("Enter your email address first, then click Forgot password.", "error");
-    showToast("Email needed", "Enter your email address before requesting a password reset.", "warning");
-    els.authEmail.focus();
-    return;
-  }
-
-  setAuthMessage("Sending password reset email...", "info");
-  els.forgotPassword.disabled = true;
   const { error } = await withTimeout(
-    supabaseClient.auth.resetPasswordForEmail(email, {
+    supabaseClient.auth.resetPasswordForEmail(els.authEmail.value.trim(), {
       redirectTo: passwordResetRedirectUrl(),
     }),
     8000,
-    "Supabase took too long to send the password reset email. Please retry once."
+    "Password recovery took too long. Please try again."
   );
-  els.forgotPassword.disabled = false;
 
   if (error) {
-    const message = friendlyAuthError(error.message, "reset");
-    setAuthMessage(message, "error");
-    showToast("Reset email failed", message, "warning");
+    setAuthMessage(error.status === 429
+      ? "Too many requests. Wait a moment and try again."
+      : "We couldn’t request a reset link right now. Please try again.", "error");
+    els.authMessage.focus();
     return;
   }
 
-  setAuthMessage("Password reset email sent. Please check your inbox.", "success");
-  els.passwordResetDialog.showModal();
-  showToast("Reset email sent", "Check your inbox for the password reset link.", "success");
+  setAuthMode("check-email", "If an account exists for this email address, you’ll receive a reset link. Open the most recent email to continue.");
 }
 
 async function saveNewPassword() {
@@ -2537,37 +2628,30 @@ async function saveNewPassword() {
 
   if (!currentSession) {
     setAuthMessage("This reset link has expired. Please request a new password reset email.", "error");
-    showToast("Reset link expired", "Request a new password reset email, then try again.", "warning");
     return;
   }
 
   if (!password || password.length < 8) {
     setAuthMessage("Use a new password with at least 8 characters.", "error");
-    showToast("Password too short", "Use a new password with at least 8 characters.", "warning");
     els.authPassword.focus();
     return;
   }
 
   if (password !== confirmPassword) {
     setAuthMessage("Passwords do not match. Please re-enter the confirmation password.", "error");
-    showToast("Passwords do not match", "Re-enter the confirmation password and try again.", "warning");
     els.authConfirmPassword.focus();
     return;
   }
 
-  setAuthMessage("Saving new password...", "info");
-  els.saveNewPassword.disabled = true;
   const { error } = await withTimeout(
     supabaseClient.auth.updateUser({ password }),
     8000,
     "Supabase took too long to update your password. Please retry once."
   );
-  els.saveNewPassword.disabled = false;
 
   if (error) {
     const message = friendlyAuthError(error.message, "reset");
     setAuthMessage(message, "error");
-    showToast("Password update failed", message, "warning");
     return;
   }
 
